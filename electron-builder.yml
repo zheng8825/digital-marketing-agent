@@ -34,8 +34,9 @@ win:
     - target: portable
       arch: [x64]
   artifactName: ${productName}-${version}-${arch}.${ext}
-  # icon.png in build/ (buildResources) is auto-converted to a Windows .ico.
-  icon: build/icon.png
+  # A real multi-resolution .ico (256/48/32/16) — generated from build/icon.png by `node build/make-icon.mjs`.
+  # We ship the .ico so electron-builder embeds it directly (its PNG→ICO auto-conversion is unreliable).
+  icon: build/icon.ico
 
 nsis:
   oneClick: false
@@ -43,6 +44,11 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   shortcutName: Marketing Agent
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
 
 portable:
   artifactName: ${productName}-${version}-portable.${ext}
+  # The portable .exe wrapper's icon — use the same multi-res .ico.
+  # (electron-builder uses win.icon for this; setting it here too is harmless and explicit.)
