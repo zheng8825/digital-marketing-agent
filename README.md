@@ -52,7 +52,12 @@ supported — re-save as `.docx`/`.pptx` or export to PDF.) Uploads stay on this
   `MAX_THINKING_TOKENS`). Saved in `<userData>/config.json`; applies to the next message.
 - The header **account chip** (and Settings → "Setup & account") shows who's signed in and on what plan —
   it runs `claude auth status`; green means the agent is using your Claude Pro/Max subscription, not the
-  paid API. There's also an **Open a terminal** button (also in the chat composer's "Terminal" button).
+  paid API. Settings has a **Switch account** button (signs out, then opens the browser to sign in to a
+  different account — useful if you hit a usage limit or need a Pro/Max account), plus **Open a terminal**
+  (also the chat composer's "Terminal" button).
+- The agent is pinned to **Claude Sonnet** by default (predictable, fast, light on quota) — pick Opus or
+  Haiku in the header/Settings if you want. If a reply errors, the message says what to do (sign in /
+  switch account / wait for the usage limit / start a new chat).
 - **Usage** chip in the header shows the last reply's tokens + time; click it for today / all-time totals.
   On a Pro/Max plan there's no per-token charge — it's just throughput info.
 - The Settings dialog also shows setup status and an **Open workspace folder** button (the agent's

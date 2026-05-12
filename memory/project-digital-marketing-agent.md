@@ -161,14 +161,41 @@ finds the cache and skips re-extracting. Documented in README's "Build the .exe"
   "Uploaded documents — `uploads/`" section telling the agent to read `_index.md`, answer grounded, cite
   which file/slide/section, and not invent content.
 
+**Added 2026-05-12 ("agent not answering" hardening + switch-account):**
+- **Pinned the agent to Sonnet.** `getModel()` in workspace.ts now returns `'sonnet'` when the app
+  config's model is empty ("Default") — so the agent always gets `--model sonnet` unless the user picks
+  Opus/Haiku, regardless of Claude Code's *global* config. (Why: on the dev's machine the global default
+  is `claude-opus-4-7[1m]` — slow, ~$0.14/turn-equivalent, burns the 5-hour rate limit fast → looked like
+  "agent won't answer". Sonnet is the right fit.) Also added `"model": "sonnet"` to
+  `agent-workspace/.claude/settings.json` (for anyone running `claude` directly in the workspace) and
+  updated the "Default" option label/note in `MODEL_OPTIONS`. NOTE: the workspace `.claude/settings.json`
+  change only reaches a *new* `<userData>/agent-workspace/` — existing installs already copied the old one;
+  but `getModel()`'s `'sonnet'` default makes it moot for the app.
+- **Switch-account feature.** New `'logout'` setup step (`claude auth logout`) in setup-run.ts (allowed in
+  `/api/setup/run`; `SetupStepId` updated). New `src/renderer/src/SwitchAccountModal.tsx`: shows the current
+  account (from `setup.auth`), and "Switch account" = stream `logout` then `login` (the login step already
+  opens the browser auth URL); plus "Just sign out" and "Open a terminal". Reachable via a "Switch account"
+  button in Settings → "Setup & account". On close it re-checks setup.
+- **Clearer chat errors.** `claude-bridge.ts` gained `decorateError(raw, hadConversationId)` — appends a
+  plain-English next-step when the error smells like an auth issue ("→ Settings → Switch account / `claude
+  login`"), a rate/usage limit ("→ wait / switch account / pick a lighter model"), or a stale `--resume`
+  session ("→ start a new chat"); also surfaces `permission_denials` count. Applied to the `result`-error,
+  `child.on('error')`, and `child.on('close')` paths.
+- **Note (not fixed here):** claude-mem 12.3.0's plugin hooks are bash one-liners; on Windows Claude Code
+  runs hook commands via PowerShell → every claude-mem hook (SessionStart/SessionEnd/Stop/…) fails with
+  PS parser errors. It's noisy in the raw stream-json but the bridge ignores non-`init` `system` events,
+  so it does NOT block replies (verified: `claude -p` against the workspace answers fine). Revisit if
+  claude-mem ships Windows-compatible hooks (or fixes upstream in Claude Code).
+
 **Still TODO:** the wife's-machine first run (clone or copy the `.exe`, walk the setup wizard, real
-chat). Optional later: a UI view that reads claude-mem's SQLite memory.
+chat). Optional later: a UI view that reads claude-mem's SQLite memory; make claude-mem actually work
+on Windows.
 
 **Known risks / things to revisit:** `--include-partial-messages` / `--verbose` flags must be
 supported by the installed Claude Code (it's a prerequisite — keep it updated); `looksLoggedIn()`
 heuristic can false-negative on Windows (credential-manager storage); the official Agent SDK
 forbids subscription billing so we deliberately drive the CLI directly; if `claude` prompts for a
 tool permission in headless mode and the allowlist/acceptEdits doesn't cover it, the turn may stall
-— may need `--permission-prompt-tool` handling later.
+— may need `--permission-prompt-tool` handling later; claude-mem hooks broken on Windows (see above).
 
 Related: [[user-profile]], [[setup-git-sync]], [[feedback-working-style]], [[project-current-focus]]

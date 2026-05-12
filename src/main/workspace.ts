@@ -61,9 +61,12 @@ export function ensureWorkspace(): string {
   return dir
 }
 
-export function getModel(): string | undefined {
+/** The model alias to pass to `claude --model`. Empty config ("Default") → 'sonnet' — a deliberate
+ *  choice so the agent is predictable & light on quota, not tied to whatever Claude Code's global
+ *  config is set to (which on a dev machine might be Opus-1M — slow, pricey, burns the rate limit). */
+export function getModel(): string {
   const m = readConfig().model
-  return m ? m : undefined
+  return m && m.trim() ? m.trim() : 'sonnet'
 }
 
 export function getThinkingEffort(): ThinkingEffort {

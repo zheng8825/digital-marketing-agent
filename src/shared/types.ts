@@ -80,7 +80,7 @@ export interface ModelOption {
 }
 
 export const MODEL_OPTIONS: ModelOption[] = [
-  { id: '', label: 'Default (recommended)', note: 'Uses whatever Claude Code is set to — usually Claude Sonnet. A solid balance of speed and quality.' },
+  { id: '', label: 'Default — Claude Sonnet (recommended)', note: 'Claude Sonnet: a solid balance of speed, quality and quota for marketing work. (The agent is pinned to Sonnet unless you pick another model here.)' },
   { id: 'sonnet', label: 'Claude Sonnet — balanced', note: 'Great for most marketing work: copy, campaigns, reports.' },
   { id: 'opus', label: 'Claude Opus — most capable', note: 'Deepest reasoning. Uses your plan’s quota faster — best on a Max plan.' },
   { id: 'haiku', label: 'Claude Haiku — fastest', note: 'Quick drafts and simple tasks. Lightest on your quota.' }

@@ -54,6 +54,19 @@ function parseUsage(obj: any): TurnUsage {
   }
 }
 
+/** Add a plain-English hint to a raw error so the marketer knows what to do about it. */
+function decorateError(raw: string, hadConversationId: boolean): string {
+  const m = (raw || '').trim() || 'the agent stopped without a reply'
+  const low = m.toLowerCase()
+  if (/invalid api key|please run \/login|not (?:logged in|authenticated)|unauthorized|oauth|no auth|run `?claude login/.test(low))
+    return `${m}\n\n→ Sign in: open Settings → "Switch account" (or run \`claude login\` with your Pro/Max plan).`
+  if (/rate limit|usage limit|limit reached|5-?hour limit|too many requests|quota/.test(low))
+    return `${m}\n\n→ You've hit your Claude plan's usage limit. Wait for it to reset, switch to another account (Settings → "Switch account"), or pick a lighter model in the header.`
+  if (hadConversationId && /(no conversation|session not found|session .* (?:not found|expired|does not exist)|resume|invalid session)/.test(low))
+    return `${m}\n\n→ This chat's session expired. Start a new chat (the + button) and ask again.`
+  return m
+}
+
 function toolSummary(name: string, input: unknown, cwd: string): string {
   const inp = (input ?? {}) as Record<string, unknown>
   const fp = inp.file_path ?? inp.path ?? inp.notebook_path
@@ -158,7 +171,9 @@ export function chat({ conversationId, message, onEvent }: ChatOptions): ChatHan
           }
           finish({ type: 'done', usage })
         } else {
-          finish({ type: 'error', message: String(obj.result || obj.subtype || 'claude reported an error') })
+          const denials = Array.isArray(obj.permission_denials) ? obj.permission_denials.length : 0
+          const base = String(obj.result || obj.api_error_status || obj.subtype || 'claude reported an error')
+          finish({ type: 'error', message: decorateError(denials ? `${base} (the agent was denied ${denials} tool action${denials === 1 ? '' : 's'})` : base, !!conversationId) })
         }
         break
       }
@@ -180,17 +195,17 @@ export function chat({ conversationId, message, onEvent }: ChatOptions): ChatHan
     stderr += chunk.toString('utf8')
   })
   child.on('error', (err) => {
-    const hint =
-      (err as NodeJS.ErrnoException).code === 'ENOENT'
-        ? 'The `claude` command was not found. Install Claude Code (`npm i -g @anthropic-ai/claude-code`) and run `claude login`.'
-        : err.message
-    finish({ type: 'error', message: hint })
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      finish({ type: 'error', message: 'The `claude` command was not found. Install Claude Code (`npm i -g @anthropic-ai/claude-code`) and sign in (Settings → "Switch account", or `claude login`).' })
+    } else {
+      finish({ type: 'error', message: decorateError(err.message, !!conversationId) })
+    }
   })
   child.on('close', (code) => {
     if (stdoutBuf.trim()) handleLine(stdoutBuf)
     if (!settled) {
-      const detail = stderr.trim().split('\n').slice(-3).join(' ')
-      finish({ type: 'error', message: detail || `\`claude\` exited with code ${code ?? '?'}` })
+      const detail = stderr.trim().split('\n').filter((l) => l.trim()).slice(-4).join(' ')
+      finish({ type: 'error', message: decorateError(detail || `\`claude\` exited with code ${code ?? '?'}`, !!conversationId) })
     }
   })
 

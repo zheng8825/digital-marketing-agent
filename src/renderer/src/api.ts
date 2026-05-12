@@ -79,7 +79,7 @@ export async function uploadDoc(file: File): Promise<UploadedDoc> {
   return (await res.json()) as UploadedDoc
 }
 
-export type SetupStepId = 'install-claude' | 'login' | 'install-mem'
+export type SetupStepId = 'install-claude' | 'login' | 'logout' | 'install-mem'
 
 /** Run a setup step on the host and stream its console output line by line. Resolves when it ends. */
 export async function streamSetupRun(

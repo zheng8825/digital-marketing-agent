@@ -38,6 +38,7 @@ import type {
 } from '@shared/types'
 import { api, fmtDuration, fmtTokens, relTime, streamChat, uploadDoc } from './api'
 import SetupWizard from './SetupWizard'
+import SwitchAccountModal from './SwitchAccountModal'
 
 type Status = 'idle' | 'working' | 'error'
 
@@ -127,6 +128,7 @@ export default function App(): JSX.Element {
   const [showSettings, setShowSettings] = useState(false)
   const [showUsage, setShowUsage] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
+  const [showSwitchAccount, setShowSwitchAccount] = useState(false)
 
   const abortRef = useRef<AbortController | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
@@ -579,11 +581,13 @@ export default function App(): JSX.Element {
           onOpenWorkspace={() => window.appBridge.openWorkspace()}
           onOpenTerminal={openTerminal}
           onOpenWizard={() => { setShowSettings(false); setShowWizard(true) }}
+          onSwitchAccount={() => { setShowSettings(false); setShowSwitchAccount(true) }}
           onClose={() => setShowSettings(false)}
         />
       )}
 
       {showWizard && <SetupWizard setup={setup} onSetupChanged={setSetup} onClose={() => setShowWizard(false)} />}
+      {showSwitchAccount && <SwitchAccountModal setup={setup} onSetupChanged={setSetup} onClose={() => { setShowSwitchAccount(false); refreshSetup() }} />}
     </div>
   )
 }
@@ -607,9 +611,10 @@ function SettingsModal(props: {
   onOpenWorkspace: () => void
   onOpenTerminal: () => void
   onOpenWizard: () => void
+  onSwitchAccount: () => void
   onClose: () => void
 }): JSX.Element {
-  const { models, efforts, config, setup, onChange, onRecheckSetup, onOpenWorkspace, onOpenTerminal, onOpenWizard, onClose } = props
+  const { models, efforts, config, setup, onChange, onRecheckSetup, onOpenWorkspace, onOpenTerminal, onOpenWizard, onSwitchAccount, onClose } = props
   const model = models.find((m) => m.id === (config.model ?? ''))
   const effort = efforts.find((e) => e.id === (config.thinkingEffort ?? 'off'))
   return (
@@ -659,6 +664,7 @@ function SettingsModal(props: {
               <li>{setup?.claudeMemInstalled ? '✅' : '❌'} claude-mem (long-term memory)</li>
             </ul>
             <div className="mt-2 flex flex-wrap gap-2">
+              <button onClick={onSwitchAccount} className="flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/10 px-2 py-1 text-accent hover:bg-accent/20"><User size={12} /> Switch account</button>
               <button onClick={onRecheckSetup} className="rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-gray-300 hover:bg-ink-800">Re-check</button>
               <button onClick={onOpenWizard} className="rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-gray-300 hover:bg-ink-800">Run setup wizard</button>
               <button onClick={onOpenTerminal} className="flex items-center gap-1.5 rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-gray-300 hover:bg-ink-800"><Terminal size={12} /> Open a terminal</button>

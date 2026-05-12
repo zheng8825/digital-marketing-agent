@@ -1,6 +1,7 @@
 // Runs the one-time setup steps for the marketer, streaming each command's output to the UI:
 //   install-claude  -> npm install -g @anthropic-ai/claude-code
 //   login           -> claude login   (prints an auth URL; we open it in the browser)
+//   logout          -> claude auth logout   (sign out — used by "switch account")
 //   install-mem     -> npx --yes claude-mem install
 //   open-terminal   -> opens a PowerShell window in the agent workspace (manual fallback)
 //
@@ -12,7 +13,7 @@ import { shell } from 'electron'
 import type { ChildProcess } from 'node:child_process'
 import { getWorkspaceDir } from './workspace'
 
-export type SetupStep = 'install-claude' | 'login' | 'install-mem'
+export type SetupStep = 'install-claude' | 'login' | 'logout' | 'install-mem'
 
 export interface RunHandle {
   done: Promise<void>
@@ -33,6 +34,8 @@ function commandFor(step: SetupStep): { cmd: string; args: string[]; display: st
       return { cmd: isWin ? 'npm.cmd' : 'npm', args: ['install', '-g', '@anthropic-ai/claude-code'], display: 'npm install -g @anthropic-ai/claude-code' }
     case 'login':
       return { cmd: isWin ? 'claude.cmd' : 'claude', args: ['login'], display: 'claude login' }
+    case 'logout':
+      return { cmd: isWin ? 'claude.cmd' : 'claude', args: ['auth', 'logout'], display: 'claude auth logout' }
     case 'install-mem':
       return { cmd: isWin ? 'npx.cmd' : 'npx', args: ['--yes', 'claude-mem', 'install'], display: 'npx claude-mem install' }
   }

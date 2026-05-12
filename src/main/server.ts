@@ -44,7 +44,7 @@ export async function startServer(): Promise<number> {
   })
   app.post('/api/setup/run', (req, res) => {
     const step = String(req.body?.step ?? '') as SetupStep
-    if (!['install-claude', 'login', 'install-mem'].includes(step)) return res.status(400).json({ error: 'unknown step' })
+    if (!['install-claude', 'login', 'logout', 'install-mem'].includes(step)) return res.status(400).json({ error: 'unknown step' })
     res.setHeader('Content-Type', 'text/event-stream')
     res.setHeader('Cache-Control', 'no-cache, no-transform')
     res.setHeader('Connection', 'keep-alive')
