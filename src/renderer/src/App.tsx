@@ -175,8 +175,6 @@ export default function App(): JSX.Element {
 
   const dot = status === 'working' ? 'bg-amber-400 pulse-dot' : status === 'error' ? 'bg-rose-500' : 'bg-emerald-400'
   const showSetup = setup && !setupDismissed && (!setup.claudeInstalled || setup.apiKeyInEnv || !setup.claudeMemInstalled)
-  const modelLabel = models.find((m) => m.id === (config.model ?? ''))?.label ?? 'Default'
-  const effortLabel = efforts.find((e) => e.id === (config.thinkingEffort ?? 'off'))?.label ?? 'Quick'
 
   const greeting = useMemo(
     () => "Hi — I'm your ASUS Malaysia notebook marketing agent. Ask me for social copy, a campaign plan, a monthly report, KOL help… or use the quick buttons below. Type in 中文 / English / Bahasa Melayu — whatever you like.",
