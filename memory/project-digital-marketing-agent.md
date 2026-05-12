@@ -98,13 +98,23 @@ electron-builder cfg), `memory/` (dev-side Claude Code memory, junctioned), top-
 **Verified 2026-05-12:** `npm install` (603 pkgs, Electron binary downloaded — `package-lock.json` now
 committed), `npm run typecheck`, `npm run build:unpacked` (electron-vite build of main+preload+renderer)
 all pass; `npm run dev` boots the vite dev server and launches Electron (only sandbox GPU/network-service
-crash noise, expected in a headless env). Two typecheck fixes in that pass: added `baseUrl`+`paths`
-(`@shared/*`, `@renderer/*`) to `tsconfig.web.json` so `tsc` resolves the renderer's `@shared/types`
-imports (the alias was only in `electron.vite.config.ts`); removed unused `modelLabel`/`effortLabel` in
-`App.tsx`.
+crash noise, expected in a headless env). `npm run build` (electron-builder) **also passes** → produces
+`release/Marketing Agent-0.1.0-portable.exe`, `release/Marketing Agent-0.1.0-x64.exe` (NSIS installer),
+`release/win-unpacked/`; launching `release/win-unpacked/Marketing Agent.exe` stays alive with the normal
+3 child procs (renderer/GPU/utility) → packaged app runs. Two typecheck fixes in that pass: added
+`baseUrl`+`paths` (`@shared/*`, `@renderer/*`) to `tsconfig.web.json` so `tsc` resolves the renderer's
+`@shared/types` imports (the alias was only in `electron.vite.config.ts`); removed unused
+`modelLabel`/`effortLabel` in `App.tsx`.
 
-**Still TODO:** packaged-build smoke test (`npm run build` → run the `.exe`). Optional later: a UI
-view that reads claude-mem's SQLite memory.
+**electron-builder gotcha (this machine):** `npm run build` first downloads `winCodeSign-2.6.0.7z`,
+whose extraction creates macOS `.dylib` symlinks → fails with `Cannot create symbolic link : A required
+privilege is not held by the client` unless Windows **Developer Mode** is on (or the build runs
+elevated). Workaround used here: manually extract that .7z (minus `darwin/`) into
+`%LOCALAPPDATA%\electron-builder\Cache\winCodeSign\winCodeSign-2.6.0\`, then re-run — electron-builder
+finds the cache and skips re-extracting. Documented in README's "Build the .exe" section.
+
+**Still TODO:** the wife's-machine first run (clone or copy the `.exe`, walk the setup wizard, real
+chat). Optional later: a UI view that reads claude-mem's SQLite memory.
 
 **Known risks / things to revisit:** `--include-partial-messages` / `--verbose` flags must be
 supported by the installed Claude Code (it's a prerequisite — keep it updated); `looksLoggedIn()`

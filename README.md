@@ -8,13 +8,15 @@ monthly reporting / analytics, and KOL management + competitor research. She can
 on **Claude Code with a Claude Pro/Max subscription** (no API key, no per-token billing) and
 keeps **long-term memory** via [claude-mem](https://github.com/thedotmack/claude-mem).
 
-> ⚠️ Status: **in active development.** Not all of the below is implemented yet — see the
-> task list / commit history. This README is the target.
+> Status: the app builds and runs (UI, chat bridge, local API, setup wizard, model/effort/usage,
+> sync). Still pending real-world use: the wife's-machine first-run, and exercising the agent's
+> skills on live campaigns. See the commit history.
 
 ## How it works
-- **Electron** app → `electron-builder` produces a portable `MarketingAgent.exe` (and an
-  installer). Double-click → an Express server starts in-process → a window opens with the
-  dashboard (it's a local web UI, so you can also open `http://localhost:<port>` in a browser).
+- **Electron** app → `electron-builder` produces a portable `Marketing Agent-<version>-portable.exe`
+  and an NSIS installer (`Marketing Agent-<version>-x64.exe`). Double-click → an Express server starts
+  in-process → a window opens with the dashboard (it's a local web UI, so you can also open
+  `http://localhost:<port>` in a browser).
 - The app spawns the **`claude` CLI** in headless streaming mode, with working directory
   `agent-workspace/` (the agent's persona = `agent-workspace/CLAUDE.md`, its knowledge =
   `agent-workspace/knowledge/`, its skills/slash-commands = `agent-workspace/.claude/skills/`).
@@ -53,14 +55,19 @@ npm run dev          # Vite UI + Electron with hot reload
 
 ## Build the .exe
 ```powershell
-npm run build        # → release/ contains MarketingAgent.exe (portable) + the installer
+npm run build        # → release/  →  "Marketing Agent-<version>-portable.exe"  +  "Marketing Agent-<version>-x64.exe" (installer)
 ```
+> First build downloads electron-builder's `winCodeSign` bundle, which contains macOS symlinks.
+> Extracting those needs symlink-create rights — turn on **Windows Settings → For developers →
+> Developer Mode** (or run the build from an elevated terminal) once, or `npm run build` fails with
+> `Cannot create symbolic link : A required privilege is not held by the client`. (`npm run dev` and
+> `npm run build:unpacked` don't need this.)
 
 ## Use on the wife's machine (machine B)
 1. Install the prerequisites above (Node, Claude Code + `claude login`, `npx claude-mem install`).
-2. Get the app: either copy over the built `MarketingAgent.exe`, **or** `git clone` this repo
-   and `npm install && npm run build`.
-3. Double-click `MarketingAgent.exe`. First run walks through any missing setup.
+2. Get the app: either copy over the built portable `.exe` / run the installer, **or** `git clone`
+   this repo and `npm install && npm run build`.
+3. Double-click the app. First run walks through any missing setup.
 4. Chat. Use the right "workspace" panel to refine the agent's instructions/knowledge — that
    is "training" it. Hit **Sync** to commit & push those changes back to GitHub so machine A
    sees them. (Requires `git` + GitHub auth on machine B — an SSH key on the account, or a
@@ -77,8 +84,11 @@ Remote: `origin = git@github.com:zheng8825/digital-marketing-agent.git` (SSH).
 ## Repo layout
 | Path | What |
 |---|---|
-| `electron/` | Electron main, preload, Express server, `claude` CLI bridge |
-| `ui/` | Vite + React + TS + Tailwind renderer (the dashboard) |
+| `src/main/` | Electron main process: Express server (`server.ts`), `claude` CLI bridge (`claude-bridge.ts`), workspace/config (`workspace.ts`), chat sessions (`sessions.ts`), token usage (`usage.ts`), setup detect/run (`setup.ts`, `setup-run.ts`), git sync (`git-sync.ts`) |
+| `src/preload/` | preload script + its `.d.ts` (the `window` API the renderer sees) |
+| `src/renderer/` | Vite + React + TS + Tailwind renderer (the dashboard) — `src/App.tsx`, `src/SetupWizard.tsx`, `src/api.ts` |
+| `src/shared/` | types shared by main + renderer (`types.ts`) |
 | `agent-workspace/` | the spawned `claude`'s cwd — `CLAUDE.md` (persona), `knowledge/`, `.claude/skills/`, `outputs/` |
-| `build/` | app icons, electron-builder extra config |
+| `build/` | app icon (`icon.png`) |
+| `electron.vite.config.ts`, `electron-builder.yml` | build config (electron-vite bundling; electron-builder packaging → `release/`) |
 | `memory/` | Claude Code (dev assistant) memory for working on this repo — see `CLAUDE.md` |
