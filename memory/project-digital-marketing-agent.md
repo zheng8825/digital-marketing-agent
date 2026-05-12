@@ -48,8 +48,47 @@ his wife's machine.
 electron-builder cfg), `memory/` (dev-side Claude Code memory, junctioned), top-level
 `CLAUDE.md` (for Claude Code working ON this repo) + `README.md` (run/build/deploy).
 
-**Open / to confirm with user:** Electron-app-window vs a lighter "server + open browser
-tab" packaging (proceeding with Electron unless told otherwise); whether the GitHub repo
-exists yet (push needs his GCM auth — have him run `! git push -u origin main`).
+**Progress (2026-05-12):**
+- ✅ `agent-workspace/` built: `CLAUDE.md` (the marketing agent's persona), `knowledge/`
+  (01 brand&products, 02 channels&partners, 03 kol-list, 04 calendar&moments, 05 learnings,
+  _inputs-needed, README, strategy/00-brand-awareness-strategy), `.claude/settings.json`
+  (acceptEdits + allowlist), `.claude/commands/{post,campaign,report,kol}.md`, `outputs/`.
+- ✅ App scaffold committed (commit c3abc3c): `package.json` (electron-vite, Vite+React+TS,
+  Tailwind 3.4, electron-builder; deps: express, cross-spawn; **no `"type":"module"`** — CJS),
+  `electron.vite.config.ts`, `tsconfig.*`, `tailwind.config.js`+`postcss.config.js` (CJS),
+  `electron-builder.yml` (win nsis+portable; `extraResources` ships agent-workspace as template),
+  `build/README.md` (icon TODO).
+  - `src/main/`: `workspace.ts` (resolves per-user workspace: config > dev-repo's agent-workspace
+    > `<userData>/agent-workspace` seeded from `process.resourcesPath/agent-workspace`; safe
+    read/write of TRAINABLE_FILES; config.json for model/workspaceDir), `sessions.ts` (chat
+    index+transcripts in userData, NOT the repo), `claude-bridge.ts` (spawns `claude -p
+    --output-format stream-json --verbose --include-partial-messages [--resume <id>]` via
+    cross-spawn, cwd=workspace, **deletes ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN/Bedrock/Vertex
+    env so it uses the Pro/Max subscription**, message via stdin, parses stream-json → ChatStreamEvent,
+    10-min timeout, cancel on client disconnect), `setup.ts` (best-effort detect claude version /
+    logged-in / api-key-in-env / claude-mem), `git-sync.ts` ("Sync": find repo root, add/commit/push),
+    `server.ts` (Express on 127.0.0.1 random port: /api/setup,/sessions,/agent/file{s},/sync,/config,
+    POST /api/chat = SSE), `index.ts` (Electron: BrowserWindow loads ELECTRON_RENDERER_URL or built
+    index.html; `ipcMain.handle('get-api-port')`).
+  - `src/preload/index.ts`: contextBridge `appBridge.getApiPort()`.
+  - `src/renderer/`: `index.html` (CSP), `src/main.tsx`, `src/index.css` (DM Sans via @fontsource,
+    tailwind, pulse-dot), `src/api.ts` (fetch wrapper + SSE `streamChat` + `relTime`), `src/App.tsx`
+    (the dashboard: header+status dot+Sync btn, setup banner, left chat-history sidebar, center
+    streaming chat w/ tool-use chips + `/post /campaign /report /kol` quick buttons, right panel:
+    Notes scratchpad (localStorage) + "Train agent" file editor (loads/saves TRAINABLE_FILES)).
+- `origin` remote set to github.com/zheng8825/digital-marketing-agent; **not pushed yet** (needs
+  the user's GCM popup → user runs `! git push -u origin main`; and the GitHub repo must exist).
+
+**Still TODO:** verify `npm install` + `npm run dev` actually run; real app icon; auto-run
+`claude login` / `npx claude-mem install` from the UI (currently the setup banner just tells the
+user the commands); a "memory" view reading claude-mem's SQLite; packaged-build smoke test;
+push to GitHub.
+
+**Known risks / things to revisit:** `--include-partial-messages` / `--verbose` flags must be
+supported by the installed Claude Code (it's a prerequisite — keep it updated); `looksLoggedIn()`
+heuristic can false-negative on Windows (credential-manager storage); the official Agent SDK
+forbids subscription billing so we deliberately drive the CLI directly; if `claude` prompts for a
+tool permission in headless mode and the allowlist/acceptEdits doesn't cover it, the turn may stall
+— may need `--permission-prompt-tool` handling later.
 
 Related: [[user-profile]], [[setup-git-sync]], [[feedback-working-style]], [[project-current-focus]]
