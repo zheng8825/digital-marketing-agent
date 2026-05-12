@@ -79,10 +79,33 @@ electron-builder cfg), `memory/` (dev-side Claude Code memory, junctioned), top-
 - `origin` remote set to github.com/zheng8825/digital-marketing-agent; **not pushed yet** (needs
   the user's GCM popup → user runs `! git push -u origin main`; and the GitHub repo must exist).
 
-**Still TODO:** verify `npm install` + `npm run dev` actually run; real app icon; auto-run
-`claude login` / `npx claude-mem install` from the UI (currently the setup banner just tells the
-user the commands); a "memory" view reading claude-mem's SQLite; packaged-build smoke test;
-push to GitHub.
+**Added 2026-05-12 (commits 07cf714, b005238, 4414ecf):**
+- App icon: `build/icon.png` (user-supplied) → electron-builder auto-converts; dev window icon too.
+- Model selector (Default/Sonnet/Opus/Haiku → `claude --model`) + Effort selector (Quick/Standard/Deep
+  → `MAX_THINKING_TOKENS` env on the child) — inline in the header AND in a Settings modal; persisted in
+  `<userData>/config.json`. `MODEL_OPTIONS`/`EFFORT_OPTIONS`/`AppConfig` in `src/shared/types.ts`;
+  `getModel`/`getThinkingTokens` in workspace.ts; `GET /api/models`.
+- Usage: `src/main/usage.ts` (per-day + all-time token totals in `<userData>/usage.json`); bridge parses
+  `usage`/`duration_ms`/`total_cost_usd` from the CLI `result` event → emitted on the `done` SSE event +
+  `recordTurn()`. `GET /api/usage`. Header usage chip + a usage popover (notes Pro/Max = no per-token bill).
+- First-time **setup wizard** (`src/renderer/SetupWizard.tsx` + `src/main/setup-run.ts` + `POST
+  /api/setup/run` SSE + `POST /api/setup/terminal`): per-step "Do it for me" (runs npm i -g
+  @anthropic-ai/claude-code / `claude login` [scans output for the auth URL → `shell.openExternal`] /
+  `npx --yes claude-mem install`, streams output) + "Copy command" + "Open a terminal" (PowerShell in
+  the workspace) + "Re-check". Auto-opens when `claude` isn't installed; also reachable from the banner
+  and Settings. Preload gained `openWorkspace()` + `open-workspace` IPC.
+
+**Verified 2026-05-12:** `npm install` (603 pkgs, Electron binary downloaded — `package-lock.json` now
+committed), `npm run typecheck`, `npm run build:unpacked` (electron-vite build of main+preload+renderer)
+all pass; `npm run dev` boots the vite dev server and launches Electron (only sandbox GPU/network-service
+crash noise, expected in a headless env). Two typecheck fixes in that pass: added `baseUrl`+`paths`
+(`@shared/*`, `@renderer/*`) to `tsconfig.web.json` so `tsc` resolves the renderer's `@shared/types`
+imports (the alias was only in `electron.vite.config.ts`); removed unused `modelLabel`/`effortLabel` in
+`App.tsx`.
+
+**Still TODO:** packaged-build smoke test (`npm run build` → run the `.exe`); the user runs
+`git push -u origin main` (GCM auth) after creating the GitHub repo. Optional later: a UI view that
+reads claude-mem's SQLite memory.
 
 **Known risks / things to revisit:** `--include-partial-messages` / `--verbose` flags must be
 supported by the installed Claude Code (it's a prerequisite — keep it updated); `looksLoggedIn()`
