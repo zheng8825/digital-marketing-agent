@@ -52,7 +52,53 @@ export const api = {
   putConfig: (patch: Partial<AppConfig>) =>
     json<AppConfig & { workspaceDir?: string }>('/api/config', { method: 'PUT', body: JSON.stringify(patch) }),
   getModels: () => json<{ models: ModelOption[]; efforts: EffortOption[] }>('/api/models'),
-  getUsage: () => json<UsageReport>('/api/usage')
+  getUsage: () => json<UsageReport>('/api/usage'),
+  openTerminal: () => json<{ ok: boolean }>('/api/setup/terminal', { method: 'POST' })
+}
+
+export type SetupStepId = 'install-claude' | 'login' | 'install-mem'
+
+/** Run a setup step on the host and stream its console output line by line. Resolves when it ends. */
+export async function streamSetupRun(
+  step: SetupStepId,
+  onLine: (text: string) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const b = await base()
+  const res = await fetch(b + '/api/setup/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ step }),
+    signal
+  })
+  if (!res.ok || !res.body) {
+    onLine(`(could not start: ${res.statusText})`)
+    return
+  }
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    let idx: number
+    while ((idx = buf.indexOf('\n\n')) >= 0) {
+      const frame = buf.slice(0, idx)
+      buf = buf.slice(idx + 2)
+      for (const line of frame.split('\n')) {
+        const m = /^data:\s?(.*)$/.exec(line)
+        if (!m) continue
+        try {
+          const ev = JSON.parse(m[1]) as { type: 'line'; text: string } | { type: 'done' }
+          if (ev.type === 'line') onLine(ev.text)
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
 }
 
 /** Stream a chat turn. Calls `onEvent` for every server event. Returns when the turn ends. */

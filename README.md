@@ -23,18 +23,27 @@ keeps **long-term memory** via [claude-mem](https://github.com/thedotmack/claude
 - **claude-mem** hooks Claude Code's session lifecycle to persist & recall long-term memory.
 
 ## Prerequisites (one-time, on whichever machine runs the app)
+**The app has a built-in setup wizard** (opens automatically the first time, or via the gear → "Run
+setup wizard") that walks the user through these with "Do it for me" buttons. Manually it's:
 1. **Node.js 20+** — https://nodejs.org
-2. **Claude Code**, logged in with a **Pro or Max** plan:
+2. **Claude Code**, signed in with a **Pro or Max** plan:
    ```powershell
    npm install -g @anthropic-ai/claude-code
    claude login          # choose your Pro/Max plan — do NOT set ANTHROPIC_API_KEY
    ```
-   (The app will detect and guide this on first run if it's missing.)
-3. **claude-mem**:
+3. **claude-mem** (long-term memory):
    ```powershell
    npx claude-mem install
    ```
-   (Also offered by the app's first-run setup.)
+
+## Settings, model & usage
+- Gear (top-right) or the inline header dropdowns: **Model** (Default / Sonnet / Opus / Haiku — passed
+  to `claude --model`) and **Effort** (Quick / Standard / Deep — sets the extended-thinking budget via
+  `MAX_THINKING_TOKENS`). Saved in `<userData>/config.json`; applies to the next message.
+- **Usage** chip in the header shows the last reply's tokens + time; click it for today / all-time totals.
+  On a Pro/Max plan there's no per-token charge — it's just throughput info.
+- The Settings dialog also shows setup status and an **Open workspace folder** button (the agent's
+  `CLAUDE.md`, `knowledge/`, `outputs/`).
 
 ## Develop (machine A — the developer)
 ```powershell

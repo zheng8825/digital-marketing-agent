@@ -5,6 +5,7 @@ import express from 'express'
 import type { AddressInfo } from 'node:net'
 import { chat } from './claude-bridge'
 import { getSetupStatus } from './setup'
+import { openTerminal, runSetupStep, type SetupStep } from './setup-run'
 import { syncWorkspace } from './git-sync'
 import { appendMessage, deleteSession, listSessions, loadSession, setAssistantText } from './sessions'
 import { getWorkspaceDir, readAgentFile, readConfig, writeAgentFile, writeConfig } from './workspace'
@@ -24,6 +25,28 @@ export async function startServer(): Promise<number> {
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }))
   app.get('/api/setup', (_req, res) => res.json(getSetupStatus()))
+  app.post('/api/setup/terminal', (_req, res) => {
+    try {
+      openTerminal()
+      res.json({ ok: true })
+    } catch (e) {
+      res.status(500).json({ ok: false, error: (e as Error).message })
+    }
+  })
+  app.post('/api/setup/run', (req, res) => {
+    const step = String(req.body?.step ?? '') as SetupStep
+    if (!['install-claude', 'login', 'install-mem'].includes(step)) return res.status(400).json({ error: 'unknown step' })
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache, no-transform')
+    res.setHeader('Connection', 'keep-alive')
+    res.flushHeaders?.()
+    const handle = runSetupStep(step, { onLine: (text) => res.write(`data: ${JSON.stringify({ type: 'line', text })}\n\n`) })
+    handle.done.then(() => {
+      res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`)
+      res.end()
+    })
+    req.on('close', () => handle.cancel())
+  })
 
   app.get('/api/config', (_req, res) => res.json({ ...readConfig(), workspaceDir: getWorkspaceDir() }))
   app.put('/api/config', (req, res) => {

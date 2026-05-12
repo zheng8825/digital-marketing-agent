@@ -28,6 +28,7 @@ import type {
   UsageReport
 } from '@shared/types'
 import { api, fmtDuration, fmtTokens, relTime, streamChat } from './api'
+import SetupWizard from './SetupWizard'
 
 type Status = 'idle' | 'working' | 'error'
 
@@ -67,6 +68,7 @@ export default function App(): JSX.Element {
   const [lastTurn, setLastTurn] = useState<TurnUsage | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showUsage, setShowUsage] = useState(false)
+  const [showWizard, setShowWizard] = useState(false)
 
   const abortRef = useRef<AbortController | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
@@ -77,13 +79,13 @@ export default function App(): JSX.Element {
   const refreshSetup = useCallback(() => api.getSetup().then(setSetup).catch(() => {}), [])
 
   useEffect(() => {
-    refreshSetup()
+    api.getSetup().then((s) => { setSetup(s); if (!s.claudeInstalled) setShowWizard(true) }).catch(() => {})
     refreshSessions()
     refreshUsage()
     api.trainableFiles().then(setTrainFiles).catch(() => {})
     api.getModels().then((r) => { setModels(r.models); setEfforts(r.efforts) }).catch(() => {})
     api.getConfig().then(setConfig).catch(() => {})
-  }, [refreshSessions, refreshSetup, refreshUsage])
+  }, [refreshSessions, refreshUsage])
 
   useEffect(() => { localStorage.setItem('ma:notes', notes) }, [notes])
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, streaming, toolLog])
@@ -268,7 +270,8 @@ export default function App(): JSX.Element {
             {!setup?.claudeInstalled && (<span>Install Claude Code (<code className="rounded bg-black/30 px-1">npm i -g @anthropic-ai/claude-code</code>) then <code className="rounded bg-black/30 px-1">claude login</code> with your Pro/Max plan. </span>)}
             {setup?.apiKeyInEnv && (<span>⚠️ <code className="rounded bg-black/30 px-1">ANTHROPIC_API_KEY</code> is set in your environment — that would bill the paid API instead of your subscription. Unset it. </span>)}
             {!setup?.claudeMemInstalled && (<span>For long-term memory, run <code className="rounded bg-black/30 px-1">npx claude-mem install</code>. </span>)}
-            <button className="ml-1 underline" onClick={refreshSetup}>Re-check</button>
+            <button className="ml-1 font-semibold underline" onClick={() => setShowWizard(true)}>Set it up</button>
+            <button className="ml-2 underline" onClick={refreshSetup}>Re-check</button>
           </div>
           <button className="underline" onClick={() => setSetupDismissed(true)}>Dismiss</button>
         </div>
@@ -382,9 +385,12 @@ export default function App(): JSX.Element {
           onChange={changeConfig}
           onRecheckSetup={refreshSetup}
           onOpenWorkspace={() => window.appBridge.openWorkspace()}
+          onOpenWizard={() => { setShowSettings(false); setShowWizard(true) }}
           onClose={() => setShowSettings(false)}
         />
       )}
+
+      {showWizard && <SetupWizard setup={setup} onSetupChanged={setSetup} onClose={() => setShowWizard(false)} />}
     </div>
   )
 }
@@ -406,9 +412,10 @@ function SettingsModal(props: {
   onChange: (patch: Partial<AppConfig>) => void
   onRecheckSetup: () => void
   onOpenWorkspace: () => void
+  onOpenWizard: () => void
   onClose: () => void
 }): JSX.Element {
-  const { models, efforts, config, setup, onChange, onRecheckSetup, onOpenWorkspace, onClose } = props
+  const { models, efforts, config, setup, onChange, onRecheckSetup, onOpenWorkspace, onOpenWizard, onClose } = props
   const model = models.find((m) => m.id === (config.model ?? ''))
   const effort = efforts.find((e) => e.id === (config.thinkingEffort ?? 'off'))
   return (
@@ -447,7 +454,10 @@ function SettingsModal(props: {
               <li>{setup && !setup.apiKeyInEnv ? '✅' : '⚠️'} {setup?.apiKeyInEnv ? 'ANTHROPIC_API_KEY is set — unset it to use your subscription' : 'Using your Pro/Max subscription (no API key)'}</li>
               <li>{setup?.claudeMemInstalled ? '✅' : '❌'} claude-mem (long-term memory)</li>
             </ul>
-            <button onClick={onRecheckSetup} className="mt-2 rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-gray-300 hover:bg-ink-800">Re-check</button>
+            <div className="mt-2 flex gap-2">
+              <button onClick={onRecheckSetup} className="rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-gray-300 hover:bg-ink-800">Re-check</button>
+              <button onClick={onOpenWizard} className="rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-gray-300 hover:bg-ink-800">Run setup wizard</button>
+            </div>
           </div>
 
           <div className="text-xs">
