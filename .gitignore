@@ -1,0 +1,21 @@
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Claude local-only settings
+.claude/settings.local.json
+.claude/.last_session*
+.claude/shell-snapshots/
+.claude/todos/
+
+# Temp / scratch
+*.tmp
+~$*
+*.bak
+
+# Large binaries (put creative files in cloud storage, link them in assets/)
+*.psd
+*.ai
+*.mp4
+*.mov
