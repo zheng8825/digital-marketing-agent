@@ -10,7 +10,14 @@ import { syncWorkspace } from './git-sync'
 import { appendMessage, deleteSession, listSessions, loadSession, setAssistantText } from './sessions'
 import { getWorkspaceDir, readAgentFile, readConfig, writeAgentFile, writeConfig } from './workspace'
 import { getUsage } from './usage'
-import { EFFORT_OPTIONS, MODEL_OPTIONS, TRAINABLE_FILES, type ChatStreamEvent } from '../shared/types'
+import {
+  EFFORT_OPTIONS,
+  MODEL_OPTIONS,
+  TRAINABLE_FILES,
+  type AppConfig,
+  type ChatStreamEvent,
+  type ThinkingEffort
+} from '../shared/types'
 
 export async function startServer(): Promise<number> {
   const app = express()
@@ -51,11 +58,11 @@ export async function startServer(): Promise<number> {
   app.get('/api/config', (_req, res) => res.json({ ...readConfig(), workspaceDir: getWorkspaceDir() }))
   app.put('/api/config', (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>
-    const patch: Record<string, unknown> = {}
+    const patch: Partial<AppConfig> = {}
     if ('model' in body) patch.model = String(body.model ?? '')
     if ('thinkingEffort' in body) {
       const e = String(body.thinkingEffort ?? 'off')
-      patch.thinkingEffort = (['off', 'standard', 'deep'].includes(e) ? e : 'off') as string
+      patch.thinkingEffort = (['off', 'standard', 'deep'].includes(e) ? e : 'off') as ThinkingEffort
     }
     if ('workspaceDir' in body && typeof body.workspaceDir === 'string') patch.workspaceDir = body.workspaceDir
     res.json({ ...writeConfig(patch), workspaceDir: getWorkspaceDir() })
