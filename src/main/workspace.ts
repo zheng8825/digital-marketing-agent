@@ -4,14 +4,10 @@
 import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync } from 'node:fs'
 import { dirname, join, resolve, normalize } from 'node:path'
+import { EFFORT_OPTIONS, type AppConfig, type ThinkingEffort } from '../shared/types'
 
 function isDev(): boolean {
   return !app.isPackaged
-}
-
-interface AppConfig {
-  workspaceDir?: string
-  model?: string // optional override, e.g. "sonnet"; unset = Claude Code's default
 }
 
 const userData = app.getPath('userData')
@@ -66,7 +62,18 @@ export function ensureWorkspace(): string {
 }
 
 export function getModel(): string | undefined {
-  return readConfig().model
+  const m = readConfig().model
+  return m ? m : undefined
+}
+
+export function getThinkingEffort(): ThinkingEffort {
+  return readConfig().thinkingEffort ?? 'off'
+}
+
+/** MAX_THINKING_TOKENS value for the current effort setting (0 = no extended thinking). */
+export function getThinkingTokens(): number {
+  const eff = getThinkingEffort()
+  return EFFORT_OPTIONS.find((o) => o.id === eff)?.tokens ?? 0
 }
 
 // --- "Training" the agent: safe read/write of files inside the workspace -----------------------------

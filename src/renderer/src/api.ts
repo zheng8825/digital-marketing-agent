@@ -1,9 +1,13 @@
 import type {
   AgentFileRef,
+  AppConfig,
   ChatStreamEvent,
+  EffortOption,
+  ModelOption,
   SessionDetail,
   SessionMeta,
-  SetupStatus
+  SetupStatus,
+  UsageReport
 } from '@shared/types'
 
 let cachedBase: string | null = null
@@ -44,9 +48,11 @@ export const api = {
   putAgentFile: (path: string, content: string) =>
     json<{ ok: boolean }>('/api/agent/file', { method: 'PUT', body: JSON.stringify({ path, content }) }),
   sync: () => json<{ ok: boolean; message: string }>('/api/sync', { method: 'POST' }),
-  getConfig: () => json<{ model?: string; workspaceDir?: string }>('/api/config'),
-  putConfig: (patch: Record<string, unknown>) =>
-    json<Record<string, unknown>>('/api/config', { method: 'PUT', body: JSON.stringify(patch) })
+  getConfig: () => json<AppConfig & { workspaceDir?: string }>('/api/config'),
+  putConfig: (patch: Partial<AppConfig>) =>
+    json<AppConfig & { workspaceDir?: string }>('/api/config', { method: 'PUT', body: JSON.stringify(patch) }),
+  getModels: () => json<{ models: ModelOption[]; efforts: EffortOption[] }>('/api/models'),
+  getUsage: () => json<UsageReport>('/api/usage')
 }
 
 /** Stream a chat turn. Calls `onEvent` for every server event. Returns when the turn ends. */
@@ -95,6 +101,20 @@ export async function streamChat(
       }
     }
   }
+}
+
+export function fmtTokens(n: number): string {
+  if (n < 1000) return String(n)
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`
+  return `${(n / 1_000_000).toFixed(1)}M`
+}
+
+export function fmtDuration(ms: number): string {
+  if (!ms) return '–'
+  if (ms < 1000) return `${ms}ms`
+  const s = ms / 1000
+  if (s < 60) return `${s.toFixed(1)}s`
+  return `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`
 }
 
 export function relTime(ts: number): string {

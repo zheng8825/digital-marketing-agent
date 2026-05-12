@@ -31,7 +31,8 @@ win:
     - target: portable
       arch: [x64]
   artifactName: ${productName}-${version}-${arch}.${ext}
-  icon: build/icon.ico
+  # icon.png in build/ (buildResources) is auto-converted to a Windows .ico.
+  icon: build/icon.png
 
 nsis:
   oneClick: false

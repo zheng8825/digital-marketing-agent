@@ -7,8 +7,9 @@
 import spawn from 'cross-spawn'
 import type { ChildProcess } from 'node:child_process'
 import { relative, isAbsolute } from 'node:path'
-import type { ChatStreamEvent } from '../shared/types'
-import { getModel, getWorkspaceDir } from './workspace'
+import type { ChatStreamEvent, TurnUsage } from '../shared/types'
+import { getModel, getThinkingTokens, getWorkspaceDir } from './workspace'
+import { recordTurn } from './usage'
 
 const CLAUDE_BIN = process.platform === 'win32' ? 'claude.cmd' : 'claude'
 const TURN_TIMEOUT_MS = 10 * 60 * 1000
@@ -34,7 +35,23 @@ function childEnv(): NodeJS.ProcessEnv {
   delete env.ANTHROPIC_AUTH_TOKEN
   delete env.CLAUDE_CODE_USE_BEDROCK
   delete env.CLAUDE_CODE_USE_VERTEX
+  // "Effort" = extended-thinking budget. 0 (or unset) means no extended thinking.
+  const thinkTokens = getThinkingTokens()
+  if (thinkTokens > 0) env.MAX_THINKING_TOKENS = String(thinkTokens)
+  else delete env.MAX_THINKING_TOKENS
   return env
+}
+
+function parseUsage(obj: any): TurnUsage {
+  const u = obj?.usage ?? {}
+  return {
+    inputTokens: Number(u.input_tokens ?? 0) || 0,
+    outputTokens: Number(u.output_tokens ?? 0) || 0,
+    cacheReadTokens: Number(u.cache_read_input_tokens ?? 0) || 0,
+    cacheWriteTokens: Number(u.cache_creation_input_tokens ?? 0) || 0,
+    durationMs: Number(obj?.duration_ms ?? 0) || 0,
+    costUsd: Number(obj?.total_cost_usd ?? 0) || 0
+  }
 }
 
 function toolSummary(name: string, input: unknown, cwd: string): string {
@@ -133,7 +150,13 @@ export function chat({ conversationId, message, onEvent }: ChatOptions): ChatHan
           if (deltaCount === 0 && typeof obj.result === 'string' && obj.result) {
             onEvent({ type: 'delta', text: obj.result })
           }
-          finish({ type: 'done', cost: typeof obj.total_cost_usd === 'number' ? obj.total_cost_usd : undefined })
+          const usage = parseUsage(obj)
+          try {
+            recordTurn(usage)
+          } catch {
+            /* non-fatal */
+          }
+          finish({ type: 'done', usage })
         } else {
           finish({ type: 'error', message: String(obj.result || obj.subtype || 'claude reported an error') })
         }

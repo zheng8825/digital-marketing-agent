@@ -7,8 +7,9 @@ import { chat } from './claude-bridge'
 import { getSetupStatus } from './setup'
 import { syncWorkspace } from './git-sync'
 import { appendMessage, deleteSession, listSessions, loadSession, setAssistantText } from './sessions'
-import { readAgentFile, readConfig, writeAgentFile, writeConfig } from './workspace'
-import { TRAINABLE_FILES, type ChatStreamEvent } from '../shared/types'
+import { getWorkspaceDir, readAgentFile, readConfig, writeAgentFile, writeConfig } from './workspace'
+import { getUsage } from './usage'
+import { EFFORT_OPTIONS, MODEL_OPTIONS, TRAINABLE_FILES, type ChatStreamEvent } from '../shared/types'
 
 export async function startServer(): Promise<number> {
   const app = express()
@@ -24,8 +25,20 @@ export async function startServer(): Promise<number> {
   app.get('/api/health', (_req, res) => res.json({ ok: true }))
   app.get('/api/setup', (_req, res) => res.json(getSetupStatus()))
 
-  app.get('/api/config', (_req, res) => res.json(readConfig()))
-  app.put('/api/config', (req, res) => res.json(writeConfig(req.body ?? {})))
+  app.get('/api/config', (_req, res) => res.json({ ...readConfig(), workspaceDir: getWorkspaceDir() }))
+  app.put('/api/config', (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>
+    const patch: Record<string, unknown> = {}
+    if ('model' in body) patch.model = String(body.model ?? '')
+    if ('thinkingEffort' in body) {
+      const e = String(body.thinkingEffort ?? 'off')
+      patch.thinkingEffort = (['off', 'standard', 'deep'].includes(e) ? e : 'off') as string
+    }
+    if ('workspaceDir' in body && typeof body.workspaceDir === 'string') patch.workspaceDir = body.workspaceDir
+    res.json({ ...writeConfig(patch), workspaceDir: getWorkspaceDir() })
+  })
+  app.get('/api/models', (_req, res) => res.json({ models: MODEL_OPTIONS, efforts: EFFORT_OPTIONS }))
+  app.get('/api/usage', (_req, res) => res.json(getUsage()))
 
   app.get('/api/sessions', (_req, res) => res.json(listSessions()))
   app.get('/api/sessions/:id', (req, res) => {

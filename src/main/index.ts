@@ -1,9 +1,16 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { startServer } from './server'
-import { ensureWorkspace } from './workspace'
+import { ensureWorkspace, getWorkspaceDir } from './workspace'
 
 let apiPort = 0
+
+function devIconPath(): string | undefined {
+  if (app.isPackaged) return undefined // packaged: the .exe already carries the icon
+  const p = join(app.getAppPath(), 'build', 'icon.png')
+  return existsSync(p) ? p : undefined
+}
 
 async function createWindow(): Promise<void> {
   ensureWorkspace()
@@ -18,6 +25,7 @@ async function createWindow(): Promise<void> {
     autoHideMenuBar: true,
     backgroundColor: '#0b0d14',
     title: 'Marketing Agent',
+    icon: devIconPath(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -39,6 +47,11 @@ async function createWindow(): Promise<void> {
 }
 
 ipcMain.handle('get-api-port', () => apiPort)
+ipcMain.handle('open-workspace', () => {
+  const dir = getWorkspaceDir()
+  shell.openPath(dir)
+  return dir
+})
 
 app.whenReady().then(() => {
   createWindow()
