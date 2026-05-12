@@ -76,8 +76,8 @@ electron-builder cfg), `memory/` (dev-side Claude Code memory, junctioned), top-
     (the dashboard: header+status dot+Sync btn, setup banner, left chat-history sidebar, center
     streaming chat w/ tool-use chips + `/post /campaign /report /kol` quick buttons, right panel:
     Notes scratchpad (localStorage) + "Train agent" file editor (loads/saves TRAINABLE_FILES)).
-- `origin` remote set to github.com/zheng8825/digital-marketing-agent; **not pushed yet** (needs
-  the user's GCM popup → user runs `! git push -u origin main`; and the GitHub repo must exist).
+- `origin = git@github.com:zheng8825/digital-marketing-agent.git` (SSH); `main` **pushed** &
+  tracking `origin/main` as of 2026-05-12. See [[setup-git-sync]].
 
 **Added 2026-05-12 (commits 07cf714, b005238, 4414ecf):**
 - App icon: `build/icon.png` (user-supplied) → electron-builder auto-converts; dev window icon too.
@@ -103,9 +103,8 @@ crash noise, expected in a headless env). Two typecheck fixes in that pass: adde
 imports (the alias was only in `electron.vite.config.ts`); removed unused `modelLabel`/`effortLabel` in
 `App.tsx`.
 
-**Still TODO:** packaged-build smoke test (`npm run build` → run the `.exe`); the user runs
-`git push -u origin main` (GCM auth) after creating the GitHub repo. Optional later: a UI view that
-reads claude-mem's SQLite memory.
+**Still TODO:** packaged-build smoke test (`npm run build` → run the `.exe`). Optional later: a UI
+view that reads claude-mem's SQLite memory.
 
 **Known risks / things to revisit:** `--include-partial-messages` / `--verbose` flags must be
 supported by the installed Claude Code (it's a prerequisite — keep it updated); `looksLoggedIn()`

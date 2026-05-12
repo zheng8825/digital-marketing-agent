@@ -63,15 +63,16 @@ npm run build        # → release/ contains MarketingAgent.exe (portable) + the
 3. Double-click `MarketingAgent.exe`. First run walks through any missing setup.
 4. Chat. Use the right "workspace" panel to refine the agent's instructions/knowledge — that
    is "training" it. Hit **Sync** to commit & push those changes back to GitHub so machine A
-   sees them. (Requires `git` + GitHub auth on machine B — the first push triggers a one-time
-   Git Credential Manager login.)
+   sees them. (Requires `git` + GitHub auth on machine B — an SSH key on the account, or a
+   one-time Git Credential Manager login if that machine uses the `https://` remote.)
 
 ## A ↔ B sync
-Remote: `origin = https://github.com/zheng8825/digital-marketing-agent.git`.
+Remote: `origin = git@github.com:zheng8825/digital-marketing-agent.git` (SSH).
 - Developer (A): work, `git add -A && git commit && git push`.
 - Wife (B): `git pull` (or use the app's Sync button), which brings both app updates and any
   training changes.
-- The first `git push` on each machine pops up Git Credential Manager — log into GitHub once.
+- Auth on each machine: add that machine's SSH key to the GitHub account, **or** point its
+  `origin` at the `https://` URL and sign in via Git Credential Manager on first push.
 
 ## Repo layout
 | Path | What |

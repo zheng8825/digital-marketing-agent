@@ -15,12 +15,13 @@ Key setup:
   the repo and tracked by git. Writing to either path is the same file.
 - On a new machine: `git pull` (or copy the folder), then recreate the junction with the
   command block in `README.md` (one time).
-- **Remote added 2026-05-12:** `origin = https://github.com/zheng8825/digital-marketing-agent.git`.
-  First `git push -u origin main` needs the user's Git Credential Manager popup → have the
-  user run `! git push -u origin main` themselves if a push from Claude hangs. (Local folder
-  name stays `digital-marketing`; the GitHub repo / wife's clone is `digital-marketing-agent` —
-  names differing is fine.) This repo is now an **app codebase** (Electron marketing-agent), not
-  just marketing docs — see [[project-digital-marketing-agent]].
+- **Remote (2026-05-12):** `origin = git@github.com:zheng8825/digital-marketing-agent.git` (SSH —
+  switched from the HTTPS URL; SSH key on Laptop A authenticates fine, no GCM popup needed).
+  `main` is **pushed** and tracking `origin/main`. Computer B needs its own SSH key added to the
+  GitHub account (or switch that machine's `origin` to HTTPS + GCM). (Local folder name stays
+  `digital-marketing`; the GitHub repo / wife's clone is `digital-marketing-agent` — names
+  differing is fine.) This repo is now an **app codebase** (Electron marketing-agent), not just
+  marketing docs — see [[project-digital-marketing-agent]].
 
 When the user says "push 上 git" before switching machines → `git add -A && git commit`
 (and `git push` once a remote exists). When they say "git pull 繼續" → pull, check
