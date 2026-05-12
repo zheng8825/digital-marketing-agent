@@ -93,26 +93,37 @@ export default function SwitchAccountModal({
             The agent runs on whichever Claude account is signed in here. Currently signed in as:
             <b className="ml-1 text-gray-200">{current}</b>.
           </p>
-          <p className="mb-4 text-[12px] leading-relaxed text-gray-500">
-            <b>Switch account</b> signs you out, then opens a browser window to sign in again — choose the
-            account you want (it needs a <b>Pro</b> or <b>Max</b> plan to work). If the browser doesn’t
-            open on its own, the sign-in link will appear in the output below — copy it into your browser.
+          <p className="mb-3 text-[12px] leading-relaxed text-gray-500">
+            <b>Recommended:</b> open a terminal — it runs <code className="rounded bg-black/30 px-1">claude auth logout</code>
+            then <code className="rounded bg-black/30 px-1">claude login</code>. A browser window opens; pick the
+            account you want (needs a <b>Pro</b> or <b>Max</b> plan). When it says you’re logged in, come back
+            here and hit <b>Re-check</b>. (Signing in works most reliably in a real terminal.)
           </p>
 
           <div className="flex flex-wrap gap-2">
-            <button onClick={switchNow} disabled={busy}
-              className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:brightness-110 disabled:opacity-40">
-              {busy ? <Loader2 size={13} className="animate-spin" /> : <LogIn size={13} />}
-              {phase === 'logout' ? 'Signing out…' : phase === 'login' ? 'Signing in…' : 'Switch account (sign out → sign in)'}
-            </button>
-            <button onClick={signOutOnly} disabled={busy}
-              className="flex items-center gap-1.5 rounded-md border border-ink-700 bg-ink-850 px-3 py-1.5 text-xs text-gray-300 hover:bg-ink-800 disabled:opacity-40">
-              <LogOut size={13} /> Just sign out
+            <button onClick={() => api.switchAccountInTerminal().catch(() => {})}
+              className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:brightness-110">
+              <Terminal size={13} /> Switch account in a terminal
             </button>
             <button onClick={() => api.openTerminal().catch(() => {})}
               className="flex items-center gap-1.5 rounded-md border border-ink-700 bg-ink-850 px-3 py-1.5 text-xs text-gray-300 hover:bg-ink-800">
-              <Terminal size={13} /> Open a terminal
+              <Terminal size={13} /> Open a plain terminal
             </button>
+          </div>
+
+          <div className="mt-3 border-t border-ink-700/60 pt-3">
+            <p className="mb-2 text-[11px] text-gray-500">…or try it in-app (best-effort — if it stalls, use the terminal):</p>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={switchNow} disabled={busy}
+                className="flex items-center gap-1.5 rounded-md border border-ink-700 bg-ink-850 px-3 py-1.5 text-xs text-gray-300 hover:bg-ink-800 disabled:opacity-40">
+                {busy ? <Loader2 size={13} className="animate-spin" /> : <LogIn size={13} />}
+                {phase === 'logout' ? 'Signing out…' : phase === 'login' ? 'Signing in…' : 'Sign out → sign in (here)'}
+              </button>
+              <button onClick={signOutOnly} disabled={busy}
+                className="flex items-center gap-1.5 rounded-md border border-ink-700 bg-ink-850 px-3 py-1.5 text-xs text-gray-300 hover:bg-ink-800 disabled:opacity-40">
+                <LogOut size={13} /> Just sign out
+              </button>
+            </div>
           </div>
 
           {log.length > 0 && (

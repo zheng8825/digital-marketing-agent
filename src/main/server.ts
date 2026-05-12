@@ -34,9 +34,18 @@ export async function startServer(): Promise<number> {
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }))
   app.get('/api/setup', (_req, res) => res.json(getSetupStatus()))
-  app.post('/api/setup/terminal', (_req, res) => {
+  app.post('/api/setup/terminal', (req, res) => {
     try {
-      openTerminal()
+      const run = typeof req.body?.run === 'string' && req.body.run.trim() ? String(req.body.run) : undefined
+      openTerminal(run)
+      res.json({ ok: true })
+    } catch (e) {
+      res.status(500).json({ ok: false, error: (e as Error).message })
+    }
+  })
+  app.post('/api/auth/switch-terminal', (_req, res) => {
+    try {
+      openTerminal('claude auth logout; claude login')
       res.json({ ok: true })
     } catch (e) {
       res.status(500).json({ ok: false, error: (e as Error).message })
@@ -49,12 +58,16 @@ export async function startServer(): Promise<number> {
     res.setHeader('Cache-Control', 'no-cache, no-transform')
     res.setHeader('Connection', 'keep-alive')
     res.flushHeaders?.()
+    let finished = false
     const handle = runSetupStep(step, { onLine: (text) => res.write(`data: ${JSON.stringify({ type: 'line', text })}\n\n`) })
     handle.done.then(() => {
+      finished = true
       res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`)
       res.end()
     })
-    req.on('close', () => handle.cancel())
+    // Cancel only on a *real* mid-stream client disconnect — listen on `res` (not `req`, whose
+    // 'close' fires as soon as the POST body is consumed on newer Node) and guard with `finished`.
+    res.on('close', () => { if (!finished) handle.cancel() })
   })
 
   app.get('/api/config', (_req, res) => res.json({ ...readConfig(), workspaceDir: getWorkspaceDir() }))
@@ -135,9 +148,14 @@ export async function startServer(): Promise<number> {
 
     const isNew = !conversationId
     let userMsgPersisted = false
+    let finished = false
     let acc = ''
     const send = (e: ChatStreamEvent): void => {
-      res.write(`data: ${JSON.stringify(e)}\n\n`)
+      try {
+        res.write(`data: ${JSON.stringify(e)}\n\n`)
+      } catch {
+        /* socket gone */
+      }
     }
     const persistUserMsg = (id: string): void => {
       if (userMsgPersisted) return
@@ -160,11 +178,17 @@ export async function startServer(): Promise<number> {
           if (conversationId) setAssistantText(conversationId, acc || '(no response)')
         }
         send(e)
-        if (e.type === 'done' || e.type === 'error') res.end()
+        if (e.type === 'done' || e.type === 'error') {
+          finished = true
+          res.end()
+        }
       }
     })
 
-    req.on('close', () => handle.cancel())
+    // Abort the `claude` turn only if the client *really* disconnects mid-stream. Listen on `res`
+    // (not `req` — on newer Node its 'close' fires as soon as the POST body is read, which would
+    // kill every turn instantly and leave the UI stuck on "Thinking…"); guard with `finished`.
+    res.on('close', () => { if (!finished) handle.cancel() })
   })
 
   return new Promise((resolve) => {

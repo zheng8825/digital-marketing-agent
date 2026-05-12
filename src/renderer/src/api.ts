@@ -55,6 +55,7 @@ export const api = {
   getModels: () => json<{ models: ModelOption[]; efforts: EffortOption[] }>('/api/models'),
   getUsage: () => json<UsageReport>('/api/usage'),
   openTerminal: () => json<{ ok: boolean }>('/api/setup/terminal', { method: 'POST' }),
+  switchAccountInTerminal: () => json<{ ok: boolean }>('/api/auth/switch-terminal', { method: 'POST' }),
   listDocs: () => json<UploadedDoc[]>('/api/docs'),
   deleteDoc: (id: string) => json<{ ok: boolean }>(`/api/docs/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }

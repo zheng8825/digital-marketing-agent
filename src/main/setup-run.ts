@@ -110,18 +110,26 @@ export function runSetupStep(step: SetupStep, opts: RunOpts): RunHandle {
   }
 }
 
-/** Open a PowerShell/terminal window in the agent workspace directory. */
-export function openTerminal(): void {
+/** Open a PowerShell/terminal window in the agent workspace directory, optionally pre-running a
+ *  command (handy for interactive flows like `claude login` that want a real terminal). */
+export function openTerminal(runCommand?: string): void {
   const dir = getWorkspaceDir()
   if (isWin) {
-    spawn('cmd', ['/c', 'start', '""', 'powershell.exe', '-NoExit', '-Command', `Set-Location -LiteralPath '${dir.replace(/'/g, "''")}'`], {
+    const cd = `Set-Location -LiteralPath '${dir.replace(/'/g, "''")}'`
+    const command = runCommand ? `${cd}; ${runCommand}` : cd
+    spawn('cmd', ['/c', 'start', '""', 'powershell.exe', '-NoExit', '-Command', command], {
       cwd: dir,
       detached: true,
       stdio: 'ignore'
     }).unref()
   } else if (process.platform === 'darwin') {
-    spawn('open', ['-a', 'Terminal', dir], { detached: true, stdio: 'ignore' }).unref()
+    if (runCommand) {
+      const script = `tell application "Terminal" to do script "cd ${dir.replace(/"/g, '\\"')}; ${runCommand.replace(/"/g, '\\"')}"`
+      spawn('osascript', ['-e', script], { detached: true, stdio: 'ignore' }).unref()
+    } else {
+      spawn('open', ['-a', 'Terminal', dir], { detached: true, stdio: 'ignore' }).unref()
+    }
   } else {
-    spawn('x-terminal-emulator', [], { cwd: dir, detached: true, stdio: 'ignore' }).unref()
+    spawn('x-terminal-emulator', runCommand ? ['-e', `bash -lc 'cd "${dir}"; ${runCommand}; exec bash'`] : [], { cwd: dir, detached: true, stdio: 'ignore' }).unref()
   }
 }
