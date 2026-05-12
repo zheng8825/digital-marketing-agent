@@ -5,10 +5,22 @@ import spawnSync from 'cross-spawn'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { SetupStatus } from '../shared/types'
+import type { ClaudeAuthInfo, SetupStatus } from '../shared/types'
 import { ensureWorkspace } from './workspace'
 
 const CLAUDE_BIN = process.platform === 'win32' ? 'claude.cmd' : 'claude'
+
+/** The env the agent runs with: API-key / cloud-provider vars stripped so it always uses the
+ *  logged-in Pro/Max subscription. We probe `claude auth status` with this same env so the reported
+ *  auth matches what the agent actually does. (Mirrors `childEnv()` in claude-bridge.ts.) */
+function agentEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env }
+  delete env.ANTHROPIC_API_KEY
+  delete env.ANTHROPIC_AUTH_TOKEN
+  delete env.CLAUDE_CODE_USE_BEDROCK
+  delete env.CLAUDE_CODE_USE_VERTEX
+  return env
+}
 
 function claudeVersion(): string | undefined {
   try {
@@ -18,6 +30,31 @@ function claudeVersion(): string | undefined {
     /* not installed */
   }
   return undefined
+}
+
+/** `claude auth status` → JSON. Run as the agent runs (key vars stripped). undefined if it fails. */
+function claudeAuthInfo(): ClaudeAuthInfo | undefined {
+  try {
+    const r = spawnSync.sync(CLAUDE_BIN, ['auth', 'status'], { encoding: 'utf8', timeout: 10000, env: agentEnv() })
+    const out = `${r.stdout ?? ''}\n${r.stderr ?? ''}`
+    const m = out.match(/\{[\s\S]*\}/) // tolerate leading log lines
+    if (!m) return undefined
+    const j = JSON.parse(m[0]) as Record<string, unknown>
+    const str = (k: string): string | undefined => (typeof j[k] === 'string' ? (j[k] as string) : undefined)
+    const loggedIn = j.loggedIn === true
+    const authMethod = str('authMethod')
+    const apiProvider = str('apiProvider')
+    const subscriptionType = str('subscriptionType')
+    const usingSubscription =
+      loggedIn &&
+      (apiProvider === undefined || apiProvider === 'firstParty') &&
+      authMethod !== 'apiKey' &&
+      authMethod !== 'apiKeyHelper' &&
+      !!subscriptionType
+    return { loggedIn, authMethod, apiProvider, email: str('email'), orgName: str('orgName'), subscriptionType, usingSubscription }
+  } catch {
+    return undefined
+  }
 }
 
 function settingsHasClaudeMemHooks(): boolean {
@@ -39,12 +76,14 @@ function looksLoggedIn(): boolean {
 
 export function getSetupStatus(): SetupStatus {
   const version = claudeVersion()
+  const auth = version ? claudeAuthInfo() : undefined
   return {
     claudeInstalled: !!version,
     claudeVersion: version,
-    claudeLoggedIn: looksLoggedIn(),
+    claudeLoggedIn: auth ? auth.loggedIn : looksLoggedIn(),
     apiKeyInEnv: !!process.env.ANTHROPIC_API_KEY,
     claudeMemInstalled: existsSync(join(homedir(), '.claude-mem')) || settingsHasClaudeMemHooks(),
-    workspaceDir: ensureWorkspace()
+    workspaceDir: ensureWorkspace(),
+    auth
   }
 }

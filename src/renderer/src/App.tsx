@@ -11,8 +11,11 @@ import {
   Save,
   Send,
   Settings,
+  ShieldAlert,
   StopCircle,
+  Terminal,
   Trash2,
+  User,
   Wrench,
   X
 } from 'lucide-react'
@@ -35,9 +38,39 @@ type Status = 'idle' | 'working' | 'error'
 const QUICK_ACTIONS: { cmd: string; label: string; hint: string }[] = [
   { cmd: '/post', label: 'Social post', hint: 'trilingual FB/IG/TikTok copy + hashtags + calendar row' },
   { cmd: '/campaign', label: 'Campaign plan', hint: 'seasonal/launch plan + ad copy + KOLs + UTMs' },
+  { cmd: '/gtm', label: 'GTM plan', hint: 'go-to-market plan for a new notebook launch (pre-launch → launch → sustain)' },
   { cmd: '/report', label: 'Monthly report', hint: 'turn raw numbers into a report + recommendations' },
+  { cmd: '/ppt', label: 'Slide deck', hint: 'turn a plan/report/topic into a presentation outline + speaker notes' },
   { cmd: '/kol', label: 'KOL / research', hint: 'shortlists, briefs, outreach, competitor scan' }
 ]
+
+/** Derive the "who's signed in / on what plan" chip shown in the header, from the setup probe. */
+function planLabel(t?: string): string {
+  if (!t) return ''
+  const m: Record<string, string> = { max: 'Max', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' }
+  return m[t] ?? t[0].toUpperCase() + t.slice(1)
+}
+function authChip(setup: SetupStatus | null): { tone: 'ok' | 'warn' | 'dim'; label: string; title: string } | null {
+  if (!setup || !setup.claudeInstalled) return null // the setup banner covers "not installed"
+  const a = setup.auth
+  if (a?.usingSubscription) {
+    const plan = planLabel(a.subscriptionType)
+    return {
+      tone: 'ok',
+      label: a.email ? `${a.email}${plan ? ` · ${plan}` : ''}` : `Claude ${plan || 'subscription'}`,
+      title: `Signed in as ${a.email ?? '(account)'} — the agent runs on your Claude ${plan || 'Pro/Max'} subscription (auth: ${a.authMethod ?? 'claude.ai'}), not the paid API.`
+    }
+  }
+  if (a?.loggedIn) {
+    const via = a.authMethod ?? a.apiProvider ?? 'an API method'
+    return { tone: 'warn', label: `via ${via}`, title: `The agent is authenticating via ${via}${a.apiProvider && a.apiProvider !== 'firstParty' ? ` (${a.apiProvider})` : ''} — not a Pro/Max subscription. Run \`claude login\` and pick your plan.` }
+  }
+  if (a && !a.loggedIn) return { tone: 'warn', label: 'not signed in', title: 'Claude is not signed in. Run `claude login` with your Pro/Max plan (or use the setup wizard).' }
+  // Couldn't read `claude auth status` — fall back to the file heuristic.
+  return setup.claudeLoggedIn
+    ? { tone: 'dim', label: 'signed in', title: "Claude looks signed in (couldn't read the account details). Open a terminal and run `claude auth status` to confirm." }
+    : { tone: 'warn', label: 'sign in', title: 'Claude may not be signed in. Run `claude login` with your Pro/Max plan.' }
+}
 
 export default function App(): JSX.Element {
   const [setup, setSetup] = useState<SetupStatus | null>(null)
@@ -158,6 +191,9 @@ export default function App(): JSX.Element {
     setStreaming(''); setStatus('idle'); setStatusMsg('Stopped')
   }
   function quick(cmd: string): void { setInput((v) => (v.trim() ? v : cmd + ' ')); inputRef.current?.focus() }
+  function openTerminal(): void {
+    api.openTerminal().catch(() => setStatusMsg("Couldn't open a terminal — open PowerShell yourself in the workspace folder."))
+  }
 
   function saveTrain(): void {
     api.putAgentFile(trainPath, trainContent).then(() => {
@@ -191,6 +227,21 @@ export default function App(): JSX.Element {
             <h1 className="truncate text-sm font-bold leading-tight">Marketing Agent</h1>
             <p className="truncate text-[11px] leading-tight text-gray-500">ASUS Malaysia · notebooks</p>
           </div>
+          {(() => {
+            const ac = authChip(setup)
+            if (!ac) return null
+            const tone =
+              ac.tone === 'ok' ? 'border-emerald-700/50 bg-emerald-950/40 text-emerald-300'
+              : ac.tone === 'warn' ? 'border-amber-700/50 bg-amber-950/40 text-amber-300'
+              : 'border-ink-700 bg-ink-850 text-gray-400'
+            return (
+              <button onClick={() => setShowSettings(true)} title={ac.title}
+                className={`ml-1 hidden max-w-[15rem] items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] lg:flex ${tone}`}>
+                {ac.tone === 'warn' ? <ShieldAlert size={12} className="shrink-0" /> : <User size={12} className="shrink-0" />}
+                <span className="truncate">{ac.label}</span>
+              </button>
+            )
+          })()}
         </div>
 
         <div className="flex items-center gap-2">
@@ -316,10 +367,14 @@ export default function App(): JSX.Element {
           </div>
 
           <div className="border-t border-ink-700 bg-ink-900 px-4 pb-3 pt-2.5">
-            <div className="mb-2 flex flex-wrap gap-1.5">
+            <div className="mb-2 flex flex-wrap items-center gap-1.5">
               {QUICK_ACTIONS.map((q) => (
-                <button key={q.cmd} onClick={() => quick(q.cmd)} title={q.hint} className="rounded-full border border-ink-700 bg-ink-850 px-3 py-1 text-xs text-gray-300 hover:border-accent/50 hover:text-white">{q.label}</button>
+                <button key={q.cmd} onClick={() => quick(q.cmd)} title={`${q.cmd} — ${q.hint}`} className="rounded-full border border-ink-700 bg-ink-850 px-3 py-1 text-xs text-gray-300 hover:border-accent/50 hover:text-white">{q.label}</button>
               ))}
+              <button onClick={openTerminal} title="Open a terminal in the agent's workspace folder — to run `claude`, `claude auth status`, git, etc."
+                className="ml-auto flex items-center gap-1.5 rounded-full border border-ink-700 bg-ink-850 px-3 py-1 text-xs text-gray-400 hover:border-accent/50 hover:text-white">
+                <Terminal size={12} /> Terminal
+              </button>
             </div>
             <form onSubmit={(e) => { e.preventDefault(); send() }} className="flex items-end gap-2">
               <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
@@ -383,6 +438,7 @@ export default function App(): JSX.Element {
           onChange={changeConfig}
           onRecheckSetup={refreshSetup}
           onOpenWorkspace={() => window.appBridge.openWorkspace()}
+          onOpenTerminal={openTerminal}
           onOpenWizard={() => { setShowSettings(false); setShowWizard(true) }}
           onClose={() => setShowSettings(false)}
         />
@@ -410,10 +466,11 @@ function SettingsModal(props: {
   onChange: (patch: Partial<AppConfig>) => void
   onRecheckSetup: () => void
   onOpenWorkspace: () => void
+  onOpenTerminal: () => void
   onOpenWizard: () => void
   onClose: () => void
 }): JSX.Element {
-  const { models, efforts, config, setup, onChange, onRecheckSetup, onOpenWorkspace, onOpenWizard, onClose } = props
+  const { models, efforts, config, setup, onChange, onRecheckSetup, onOpenWorkspace, onOpenTerminal, onOpenWizard, onClose } = props
   const model = models.find((m) => m.id === (config.model ?? ''))
   const effort = efforts.find((e) => e.id === (config.thinkingEffort ?? 'off'))
   return (
@@ -446,15 +503,26 @@ function SettingsModal(props: {
           <p className="text-[11px] text-gray-500">Changes take effect on your next message.</p>
 
           <div className="rounded-lg border border-ink-700 bg-ink-850 p-3 text-xs">
-            <p className="mb-1 font-semibold text-gray-400">Setup</p>
+            <p className="mb-1 font-semibold text-gray-400">Setup &amp; account</p>
             <ul className="space-y-0.5 text-gray-400">
               <li>{setup?.claudeInstalled ? '✅' : '❌'} Claude Code {setup?.claudeVersion ? `(${setup.claudeVersion})` : 'installed'}</li>
-              <li>{setup && !setup.apiKeyInEnv ? '✅' : '⚠️'} {setup?.apiKeyInEnv ? 'ANTHROPIC_API_KEY is set — unset it to use your subscription' : 'Using your Pro/Max subscription (no API key)'}</li>
+              {(() => {
+                const a = setup?.auth
+                if (a?.usingSubscription)
+                  return <li>✅ Signed in: <b className="text-gray-200">{a.email ?? '(account)'}</b> — Claude {planLabel(a.subscriptionType) || 'Pro/Max'} subscription <span className="text-gray-500">(the agent uses this, not the paid API)</span></li>
+                if (a?.loggedIn)
+                  return <li>⚠️ Agent auth: <b className="text-amber-300">{a.authMethod ?? a.apiProvider ?? 'an API method'}</b> — not a Pro/Max subscription. Run <code className="rounded bg-black/30 px-1">claude login</code> and pick your plan.</li>
+                if (a && !a.loggedIn)
+                  return <li>❌ Not signed in — run <code className="rounded bg-black/30 px-1">claude login</code> with your Pro/Max plan</li>
+                return <li>{setup?.claudeLoggedIn ? '✅' : '❌'} {setup?.claudeLoggedIn ? "Claude looks signed in — run `claude auth status` in a terminal to confirm the account" : 'Not signed in — run `claude login`'}</li>
+              })()}
+              {setup?.apiKeyInEnv && <li className="text-amber-400/80">ℹ️ <code className="rounded bg-black/30 px-1">ANTHROPIC_API_KEY</code> is set in your environment — the agent ignores it (it always uses your subscription), but plain <code className="rounded bg-black/30 px-1">claude</code> commands you run won't.</li>}
               <li>{setup?.claudeMemInstalled ? '✅' : '❌'} claude-mem (long-term memory)</li>
             </ul>
-            <div className="mt-2 flex gap-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               <button onClick={onRecheckSetup} className="rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-gray-300 hover:bg-ink-800">Re-check</button>
               <button onClick={onOpenWizard} className="rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-gray-300 hover:bg-ink-800">Run setup wizard</button>
+              <button onClick={onOpenTerminal} className="flex items-center gap-1.5 rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-gray-300 hover:bg-ink-800"><Terminal size={12} /> Open a terminal</button>
             </div>
           </div>
 

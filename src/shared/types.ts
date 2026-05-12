@@ -38,18 +38,36 @@ export type ChatStreamEvent =
   | { type: 'done'; usage?: TurnUsage } // turn finished successfully
   | { type: 'error'; message: string }
 
+/** What `claude auth status` reports — probed with the API-key env vars stripped, i.e. exactly the
+ *  auth the spawned agent uses. `undefined` on the SetupStatus means it couldn't be determined. */
+export interface ClaudeAuthInfo {
+  loggedIn: boolean
+  /** e.g. `'claude.ai'` (Pro/Max subscription) | `'apiKey'` | `'apiKeyHelper'` | `'bedrock'` | `'vertex'`. */
+  authMethod?: string
+  /** e.g. `'firstParty'` (Anthropic direct) | `'bedrock'` | `'vertex'`. */
+  apiProvider?: string
+  email?: string
+  orgName?: string
+  /** e.g. `'pro'` | `'max'` | `'team'` | `'enterprise'`. */
+  subscriptionType?: string
+  /** True iff this is a Pro/Max-style Claude subscription (not an API key or a cloud provider). */
+  usingSubscription: boolean
+}
+
 export interface SetupStatus {
   /** `claude` CLI found on PATH and reports a version. */
   claudeInstalled: boolean
   claudeVersion?: string
   /** `claude` is logged in (a non-API auth, i.e. a Pro/Max subscription) — best-effort detection. */
   claudeLoggedIn: boolean
-  /** ANTHROPIC_API_KEY is set in the environment (we warn: that would bill the API, not the subscription). */
+  /** ANTHROPIC_API_KEY is set in the environment (the agent strips it, but other `claude` commands won't). */
   apiKeyInEnv: boolean
   /** claude-mem appears installed (hooks present in ~/.claude/settings.json or the binary resolves). */
   claudeMemInstalled: boolean
   /** Path to the per-user agent workspace the app runs `claude` in. */
   workspaceDir: string
+  /** Result of `claude auth status` (probed as the agent runs — API-key env vars stripped). */
+  auth?: ClaudeAuthInfo
 }
 
 // --- Model & "effort" (thinking depth) selection -------------------------------------------------

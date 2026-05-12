@@ -40,13 +40,16 @@ his wife's machine.
     Vivobook+Zenbook). Editable from the UI's "workspace" panel = how the wife "trains" it.
   - `knowledge/` — brand notes, strategy (`00-brand-awareness-strategy.md` moved here),
     channel info, KOL list, campaign learnings.
-  - `.claude/skills/` — custom slash commands for her 4 core tasks: trilingual social posts,
-    seasonal campaign + ad copy, monthly report/analytics, KOL mgmt + competitor research.
+  - `.claude/commands/` — custom slash commands (NOT `.claude/skills/`): `post`, `campaign`, `gtm`,
+    `report`, `kol`, `ppt` (see the "Added 2026-05-12" note below for the full current list).
   - `outputs/` — generated deliverables.
 
-**Repo layout:** `electron/`, `ui/` (Vite React), `agent-workspace/`, `build/` (icons,
-electron-builder cfg), `memory/` (dev-side Claude Code memory, junctioned), top-level
-`CLAUDE.md` (for Claude Code working ON this repo) + `README.md` (run/build/deploy).
+**Repo layout (actual):** `src/main/` (Electron main: server, claude-bridge, workspace, sessions, usage,
+setup, setup-run, git-sync), `src/preload/`, `src/renderer/` (Vite React — `src/App.tsx` etc.),
+`src/shared/types.ts`, `agent-workspace/`, `build/` (`icon.png`), `electron.vite.config.ts` +
+`electron-builder.yml`, `memory/` (dev-side Claude Code memory, junctioned), top-level `CLAUDE.md`
+(for Claude Code working ON this repo) + `README.md`. (The early `electron/` + `ui/` scaffold was
+never used — electron-vite's `src/{main,preload,renderer}` layout is what shipped.)
 
 **Progress (2026-05-12):**
 - ✅ `agent-workspace/` built: `CLAUDE.md` (the marketing agent's persona), `knowledge/`
@@ -112,6 +115,27 @@ privilege is not held by the client` unless Windows **Developer Mode** is on (or
 elevated). Workaround used here: manually extract that .7z (minus `darwin/`) into
 `%LOCALAPPDATA%\electron-builder\Cache\winCodeSign\winCodeSign-2.6.0\`, then re-run — electron-builder
 finds the cache and skips re-extracting. Documented in README's "Build the .exe" section.
+
+**Added 2026-05-12 (account badge + terminal button + 2 skills):**
+- **Account/auth badge.** `setup.ts` now also runs `claude auth status` (JSON output) — probed with the
+  same env the agent uses (ANTHROPIC_API_KEY/AUTH_TOKEN/Bedrock/Vertex stripped), so it reflects the
+  agent's real auth. New `ClaudeAuthInfo` type on `SetupStatus.auth` (`loggedIn`, `authMethod` e.g.
+  `'claude.ai'`, `apiProvider` e.g. `'firstParty'`, `email`, `orgName`, `subscriptionType` e.g.
+  `'max'`/`'pro'`, derived `usingSubscription`). Header shows a chip (email · plan; green if subscription,
+  amber if API/not-signed-in) → clicking it opens Settings; Settings "Setup & account" section spells it
+  out, plus an info line if `ANTHROPIC_API_KEY` is in the env (agent ignores it). `App.tsx` helpers
+  `planLabel()` / `authChip()`.
+- **"Terminal" button in the chat composer** (`api.openTerminal()` → existing `POST /api/setup/terminal`
+  → `openTerminal()` in setup-run.ts, opens PowerShell in the agent workspace). Also added an "Open a
+  terminal" button to the Settings dialog.
+- **2 new slash commands** in `agent-workspace/.claude/commands/`: `gtm.md` (go-to-market plan for a new
+  notebook launch — pre-launch → launch → sustain phases, PR/seeding, KOL embargo, retail co-marketing,
+  KPIs per phase; distinct from `/campaign` which is for existing-product promo moments) and `ppt.md`
+  (turn a plan/report/topic into a slide-by-slide deck w/ speaker notes + suggested visual per slide;
+  中文 for internal/boss, EN/BM for partners; offers to also emit a real `.pptx` via python-pptx, or a
+  Marp deck, else the markdown pastes straight into PowerPoint). `agent-workspace/CLAUDE.md` core-jobs
+  list updated to 6 jobs (`/post /campaign /gtm /report /kol /ppt`); UI quick-action pills updated to
+  match (6 pills + the Terminal button).
 
 **Still TODO:** the wife's-machine first run (clone or copy the `.exe`, walk the setup wizard, real
 chat). Optional later: a UI view that reads claude-mem's SQLite memory.
