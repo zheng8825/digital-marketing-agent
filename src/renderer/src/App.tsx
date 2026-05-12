@@ -4,9 +4,13 @@ import {
   Bot,
   BookOpen,
   Copy,
+  FileSpreadsheet,
+  FileText,
+  Files,
   FolderOpen,
   Loader2,
   Plus,
+  Presentation,
   RefreshCw,
   Save,
   Send,
@@ -15,6 +19,7 @@ import {
   StopCircle,
   Terminal,
   Trash2,
+  Upload,
   User,
   Wrench,
   X
@@ -28,9 +33,10 @@ import type {
   SessionMeta,
   SetupStatus,
   TurnUsage,
+  UploadedDoc,
   UsageReport
 } from '@shared/types'
-import { api, fmtDuration, fmtTokens, relTime, streamChat } from './api'
+import { api, fmtDuration, fmtTokens, relTime, streamChat, uploadDoc } from './api'
 import SetupWizard from './SetupWizard'
 
 type Status = 'idle' | 'working' | 'error'
@@ -72,6 +78,18 @@ function authChip(setup: SetupStatus | null): { tone: 'ok' | 'warn' | 'dim'; lab
     : { tone: 'warn', label: 'sign in', title: 'Claude may not be signed in. Run `claude login` with your Pro/Max plan.' }
 }
 
+const DOC_ACCEPT = '.pptx,.docx,.pdf,.xlsx,.csv,.txt,.md,.markdown,.json,.html,.htm,.rtf,.ppt,.doc,.xls'
+function DocIcon({ kind, className }: { kind: UploadedDoc['kind']; className?: string }): JSX.Element {
+  if (kind === 'powerpoint') return <Presentation className={className} />
+  if (kind === 'excel') return <FileSpreadsheet className={className} />
+  return <FileText className={className} />
+}
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
 export default function App(): JSX.Element {
   const [setup, setSetup] = useState<SetupStatus | null>(null)
   const [setupDismissed, setSetupDismissed] = useState(false)
@@ -84,7 +102,7 @@ export default function App(): JSX.Element {
   const [streaming, setStreaming] = useState('')
   const [toolLog, setToolLog] = useState<string[]>([])
 
-  const [rightTab, setRightTab] = useState<'notes' | 'train'>('notes')
+  const [rightTab, setRightTab] = useState<'notes' | 'docs' | 'train'>('notes')
   const [notes, setNotes] = useState(() => localStorage.getItem('ma:notes') ?? '')
   const [trainFiles, setTrainFiles] = useState<AgentFileRef[]>([])
   const [trainPath, setTrainPath] = useState('CLAUDE.md')
@@ -93,6 +111,13 @@ export default function App(): JSX.Element {
   const [trainNote, setTrainNote] = useState('')
   const [syncNote, setSyncNote] = useState('')
   const [syncing, setSyncing] = useState(false)
+
+  const [docs, setDocs] = useState<UploadedDoc[]>([])
+  const [docsBusy, setDocsBusy] = useState(false)
+  const [docNote, setDocNote] = useState('')
+  const [dragOver, setDragOver] = useState(false)
+  const [srcSel, setSrcSel] = useState<Set<string>>(new Set())
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [models, setModels] = useState<ModelOption[]>([])
   const [efforts, setEfforts] = useState<EffortOption[]>([])
@@ -110,15 +135,17 @@ export default function App(): JSX.Element {
   const refreshSessions = useCallback(() => api.listSessions().then(setSessions).catch(() => {}), [])
   const refreshUsage = useCallback(() => api.getUsage().then(setUsage).catch(() => {}), [])
   const refreshSetup = useCallback(() => api.getSetup().then(setSetup).catch(() => {}), [])
+  const refreshDocs = useCallback(() => api.listDocs().then(setDocs).catch(() => {}), [])
 
   useEffect(() => {
     api.getSetup().then((s) => { setSetup(s); if (!s.claudeInstalled) setShowWizard(true) }).catch(() => {})
     refreshSessions()
     refreshUsage()
+    refreshDocs()
     api.trainableFiles().then(setTrainFiles).catch(() => {})
     api.getModels().then((r) => { setModels(r.models); setEfforts(r.efforts) }).catch(() => {})
     api.getConfig().then(setConfig).catch(() => {})
-  }, [refreshSessions, refreshUsage])
+  }, [refreshSessions, refreshUsage, refreshDocs])
 
   useEffect(() => { localStorage.setItem('ma:notes', notes) }, [notes])
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, streaming, toolLog])
@@ -151,9 +178,18 @@ export default function App(): JSX.Element {
     api.deleteSession(id).then(() => { if (activeId === id) newChat(); refreshSessions() })
   }
 
+  /** Paths of the docs currently ticked as "sources", in upload order — for the message hint. */
+  function selectedSourcePaths(): string[] {
+    return docs.filter((d) => srcSel.has(d.id) && !d.unsupported).map((d) => d.agentPath)
+  }
+
   async function send(): Promise<void> {
     const text = input.trim()
     if (!text || status === 'working') return
+    const srcPaths = selectedSourcePaths()
+    const outgoing = srcPaths.length
+      ? `[Use these uploaded sources to answer (read them first): ${srcPaths.join(', ')}]\n\n${text}`
+      : text
     setMessages((m) => [...m, { role: 'user', content: text, ts: Date.now() }])
     setInput(''); setStreaming(''); setToolLog([])
     setStatus('working'); setStatusMsg('Thinking…')
@@ -162,7 +198,7 @@ export default function App(): JSX.Element {
     let acc = ''
     let isNew = !activeId
     try {
-      await streamChat({ conversationId: activeId ?? undefined, message: text }, (ev) => {
+      await streamChat({ conversationId: activeId ?? undefined, message: outgoing }, (ev) => {
         if (ev.type === 'session') {
           if (isNew) { setActiveId(ev.id); isNew = false; refreshSessions() }
         } else if (ev.type === 'delta') {
@@ -193,6 +229,48 @@ export default function App(): JSX.Element {
   function quick(cmd: string): void { setInput((v) => (v.trim() ? v : cmd + ' ')); inputRef.current?.focus() }
   function openTerminal(): void {
     api.openTerminal().catch(() => setStatusMsg("Couldn't open a terminal — open PowerShell yourself in the workspace folder."))
+  }
+
+  async function addFiles(files: FileList | File[] | null): Promise<void> {
+    const list = Array.from(files ?? [])
+    if (list.length === 0) return
+    setDocsBusy(true); setDocNote('')
+    let ok = 0
+    const notes: string[] = []
+    for (const f of list) {
+      try {
+        const doc = await uploadDoc(f)
+        ok++
+        setDocs((d) => [doc, ...d.filter((x) => x.id !== doc.id)])
+        if (!doc.unsupported) setSrcSel((s) => new Set(s).add(doc.id))
+        if (doc.unsupported) notes.push(`${doc.name}: ${doc.note}`)
+      } catch (e) {
+        notes.push(`${f.name}: ${(e as Error).message}`)
+      }
+    }
+    setDocsBusy(false)
+    setDocNote(notes.length ? notes.join(' · ') : `Added ${ok} file${ok === 1 ? '' : 's'}. The agent can read ${ok === 1 ? 'it' : 'them'} now — ask away.`)
+    setTimeout(() => setDocNote(''), notes.length ? 9000 : 5000)
+    refreshDocs()
+  }
+  function removeDoc(id: string): void {
+    setDocs((d) => d.filter((x) => x.id !== id))
+    setSrcSel((s) => { const n = new Set(s); n.delete(id); return n })
+    api.deleteDoc(id).catch(() => {}).finally(refreshDocs)
+  }
+  function toggleSrc(id: string): void {
+    setSrcSel((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+  function askAbout(d: UploadedDoc): void {
+    setRightTab('docs')
+    setSrcSel((s) => new Set(s).add(d.id))
+    setInput((v) => (v.trim() ? v : `About "${d.name}": `))
+    inputRef.current?.focus()
   }
 
   function saveTrain(): void {
@@ -371,11 +449,22 @@ export default function App(): JSX.Element {
               {QUICK_ACTIONS.map((q) => (
                 <button key={q.cmd} onClick={() => quick(q.cmd)} title={`${q.cmd} — ${q.hint}`} className="rounded-full border border-ink-700 bg-ink-850 px-3 py-1 text-xs text-gray-300 hover:border-accent/50 hover:text-white">{q.label}</button>
               ))}
-              <button onClick={openTerminal} title="Open a terminal in the agent's workspace folder — to run `claude`, `claude auth status`, git, etc."
+              <button onClick={() => { setRightTab('docs'); fileInputRef.current?.click() }} title="Upload a PPT / Word / PDF for the agent to read & answer about"
                 className="ml-auto flex items-center gap-1.5 rounded-full border border-ink-700 bg-ink-850 px-3 py-1 text-xs text-gray-400 hover:border-accent/50 hover:text-white">
+                <Upload size={12} /> Docs{docs.length ? ` (${docs.length})` : ''}
+              </button>
+              <button onClick={openTerminal} title="Open a terminal in the agent's workspace folder — to run `claude`, `claude auth status`, git, etc."
+                className="flex items-center gap-1.5 rounded-full border border-ink-700 bg-ink-850 px-3 py-1 text-xs text-gray-400 hover:border-accent/50 hover:text-white">
                 <Terminal size={12} /> Terminal
               </button>
             </div>
+            {selectedSourcePaths().length > 0 && (
+              <div className="mb-1.5 flex items-center gap-2 text-[11px] text-gray-400">
+                <Files size={12} className="shrink-0 text-accent" />
+                <span className="truncate">Using {selectedSourcePaths().length} source{selectedSourcePaths().length === 1 ? '' : 's'}: {docs.filter((d) => srcSel.has(d.id) && !d.unsupported).map((d) => d.name).join(', ')}</span>
+                <button onClick={() => setSrcSel(new Set())} className="shrink-0 underline hover:text-gray-200">clear</button>
+              </div>
+            )}
             <form onSubmit={(e) => { e.preventDefault(); send() }} className="flex items-end gap-2">
               <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
@@ -390,16 +479,18 @@ export default function App(): JSX.Element {
           </div>
         </main>
 
-        {/* Right: workspace / training */}
+        {/* Right: workspace — notes / docs / training */}
         <aside className="hidden w-80 shrink-0 flex-col border-l border-ink-700 bg-ink-900 lg:flex">
           <div className="flex border-b border-ink-700 text-xs">
-            {(['notes', 'train'] as const).map((t) => (
+            {(['notes', 'docs', 'train'] as const).map((t) => (
               <button key={t} onClick={() => setRightTab(t)} className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 font-semibold uppercase tracking-wider ${rightTab === t ? 'bg-ink-850 text-gray-100' : 'text-gray-500 hover:text-gray-300'}`}>
-                {t === 'notes' ? <BookOpen size={13} /> : <Bot size={13} />}{t === 'notes' ? 'Notes' : 'Train agent'}
+                {t === 'notes' ? <BookOpen size={13} /> : t === 'docs' ? <Files size={13} /> : <Bot size={13} />}
+                {t === 'notes' ? 'Notes' : t === 'docs' ? `Docs${docs.length ? ` (${docs.length})` : ''}` : 'Train'}
               </button>
             ))}
           </div>
-          {rightTab === 'notes' ? (
+
+          {rightTab === 'notes' && (
             <div className="flex flex-1 flex-col gap-2 p-3">
               <p className="text-[11px] text-gray-500">Scratchpad — drafts, ideas, outputs. Saved on this machine.</p>
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes, drafts, pasted outputs…"
@@ -409,7 +500,54 @@ export default function App(): JSX.Element {
                 <button onClick={() => navigator.clipboard.writeText(notes)} className="flex items-center gap-1.5 rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-xs text-gray-300 hover:bg-ink-800"><Copy size={12} /> Copy</button>
               </div>
             </div>
-          ) : (
+          )}
+
+          {rightTab === 'docs' && (
+            <div
+              className="flex flex-1 flex-col gap-2 p-3"
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files) }}
+            >
+              <p className="text-[11px] leading-relaxed text-gray-500">
+                Upload PPT / Word / PDF / text. The agent reads them — then ask it anything about them (like NotebookLM).
+                Tick the ones you want it to use as sources for your next message.
+              </p>
+              <input ref={fileInputRef} type="file" multiple accept={DOC_ACCEPT} className="hidden"
+                onChange={(e) => { addFiles(e.target.files); e.currentTarget.value = '' }} />
+              <button onClick={() => fileInputRef.current?.click()} disabled={docsBusy}
+                className={`flex items-center justify-center gap-2 rounded-lg border border-dashed px-3 py-3 text-xs ${dragOver ? 'border-accent/70 bg-accent/10 text-accent' : 'border-ink-700 bg-ink-850 text-gray-400 hover:border-accent/50 hover:text-gray-200'} disabled:opacity-50`}>
+                {docsBusy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                {docsBusy ? 'Uploading…' : 'Add files — or drop them here'}
+              </button>
+              <div className="scroll-thin flex-1 space-y-1.5 overflow-y-auto">
+                {docs.length === 0 && <p className="px-1 pt-2 text-[11px] text-gray-600">No documents yet.</p>}
+                {docs.map((d) => (
+                  <div key={d.id} className={`rounded-lg border p-2 ${d.unsupported ? 'border-amber-800/50 bg-amber-950/20' : srcSel.has(d.id) ? 'border-accent/40 bg-accent/5' : 'border-ink-700 bg-ink-850'}`}>
+                    <div className="flex items-start gap-2">
+                      {!d.unsupported && (
+                        <input type="checkbox" checked={srcSel.has(d.id)} onChange={() => toggleSrc(d.id)} title="Use as a source for the next message"
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-accent" />
+                      )}
+                      <DocIcon kind={d.kind} className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs text-gray-200" title={d.name}>{d.name}</p>
+                        <p className="text-[10px] text-gray-500">{fmtBytes(d.size)} · {relTime(d.addedAt)}{d.converted ? ' · converted to text' : ''}</p>
+                        {d.unsupported && <p className="mt-0.5 text-[10px] text-amber-400/90">{d.note}</p>}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {!d.unsupported && <button onClick={() => askAbout(d)} title="Ask about this document" className="rounded border border-ink-700 bg-ink-900 px-1.5 py-0.5 text-[10px] text-gray-300 hover:bg-ink-800">Ask</button>}
+                        <button onClick={() => removeDoc(d.id)} title="Remove" className="text-gray-500 hover:text-rose-400"><X size={13} /></button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {docNote && <p className="text-[11px] text-gray-400"><span className="msg-body">{docNote}</span></p>}
+            </div>
+          )}
+
+          {rightTab === 'train' && (
             <div className="flex flex-1 flex-col gap-2 p-3">
               <p className="text-[11px] text-gray-500">Teach the agent: edit its instructions or knowledge. Changes persist and (after Sync) reach the other machine.</p>
               <select value={trainPath} onChange={(e) => loadTrainFile(e.target.value)} className="rounded-lg border border-ink-700 bg-ink-850 px-2 py-1.5 text-xs text-gray-200 focus:outline-none">
@@ -424,6 +562,7 @@ export default function App(): JSX.Element {
               </div>
             </div>
           )}
+
           {syncNote && <div className="border-t border-ink-700 px-3 py-2 text-[11px] text-gray-400"><span className="msg-body">{syncNote}</span></div>}
         </aside>
       </div>

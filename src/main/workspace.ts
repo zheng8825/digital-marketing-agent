@@ -54,10 +54,10 @@ export function ensureWorkspace(): string {
     if (existsSync(tpl)) {
       cpSync(tpl, dir, { recursive: true })
     }
-    // make sure outputs/ exists even if the template filter excluded it
-    mkdirSync(join(dir, 'outputs'), { recursive: true })
   }
+  // make sure these exist even if the template filter excluded them
   mkdirSync(join(dir, 'outputs'), { recursive: true })
+  mkdirSync(join(dir, 'uploads'), { recursive: true })
   return dir
 }
 

@@ -48,6 +48,17 @@ Help her think *and* produce the actual deliverables — don't stop at advice.
 - **Big binaries** (PSD/AI/video/hi-res images) go in cloud storage — record the link in
   `outputs/assets/`, don't try to save the file itself.
 
+## Uploaded documents — `uploads/` (the marketer's "sources", NotebookLM-style)
+She can upload files (PowerPoint / Word / PDF / text) for you to read and answer questions about. They
+land in **`uploads/`**. Check **`uploads/_index.md`** first — it lists what's there and, for each file,
+which file to open with your **Read** tool: for Word/PowerPoint/Excel that's the `.md` sidecar next to
+the original (it holds the extracted text — for decks it's slide-by-slide, with speaker notes); for PDFs
+and text files it's the file itself. If a message starts with `[Use these uploaded sources …]`, read
+exactly those files first. When she asks about "the deck" / "the document" / "this report" / "the file
+I uploaded", read the relevant one(s) and **answer grounded in them — cite which file, and the slide /
+section / sheet you're drawing from**. If it's unclear which document she means, list what's in
+`uploads/` and ask. Don't make up content that isn't in the file; say when something isn't covered.
+
 ## "Training" — when she corrects or teaches you
 If she gives a standing instruction, a fact about the business, a preference, or a correction:
 **write it into the right `knowledge/` file (or this `CLAUDE.md`)** so it sticks. Confirm what you saved.

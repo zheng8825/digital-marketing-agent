@@ -20,6 +20,10 @@ release/
 *.mov
 *.zip
 
+# Documents the marketer uploads for the agent to read — local working area, not synced (can be big).
+agent-workspace/uploads/*
+!agent-workspace/uploads/.gitkeep
+
 # OS
 Thumbs.db
 Desktop.ini

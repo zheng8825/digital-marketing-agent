@@ -7,6 +7,7 @@ import type {
   SessionDetail,
   SessionMeta,
   SetupStatus,
+  UploadedDoc,
   UsageReport
 } from '@shared/types'
 
@@ -53,7 +54,29 @@ export const api = {
     json<AppConfig & { workspaceDir?: string }>('/api/config', { method: 'PUT', body: JSON.stringify(patch) }),
   getModels: () => json<{ models: ModelOption[]; efforts: EffortOption[] }>('/api/models'),
   getUsage: () => json<UsageReport>('/api/usage'),
-  openTerminal: () => json<{ ok: boolean }>('/api/setup/terminal', { method: 'POST' })
+  openTerminal: () => json<{ ok: boolean }>('/api/setup/terminal', { method: 'POST' }),
+  listDocs: () => json<UploadedDoc[]>('/api/docs'),
+  deleteDoc: (id: string) => json<{ ok: boolean }>(`/api/docs/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+/** Upload one file to the agent's `uploads/` folder; returns its record (incl. how it was handled). */
+export async function uploadDoc(file: File): Promise<UploadedDoc> {
+  const b = await base()
+  const res = await fetch(b + '/api/docs/upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', 'x-filename': encodeURIComponent(file.name) },
+    body: file
+  })
+  if (!res.ok) {
+    let msg = res.statusText
+    try {
+      msg = (await res.json()).error ?? msg
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg)
+  }
+  return (await res.json()) as UploadedDoc
 }
 
 export type SetupStepId = 'install-claude' | 'login' | 'install-mem'

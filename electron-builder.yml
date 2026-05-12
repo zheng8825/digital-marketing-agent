@@ -13,7 +13,8 @@ files:
   - "!**/*.map"
 
 # The agent's brain (persona, knowledge, skills) ships with the app as an unpacked resource,
-# then is copied to the per-user workspace on first run. Outputs are NOT shipped.
+# then is copied to the per-user workspace on first run. Generated outputs and uploaded docs are NOT
+# shipped (just the empty folders).
 extraResources:
   - from: agent-workspace
     to: agent-workspace
@@ -21,6 +22,8 @@ extraResources:
       - "**/*"
       - "!outputs/**"
       - "outputs/.gitkeep"
+      - "!uploads/**"
+      - "uploads/.gitkeep"
 
 asar: true
 

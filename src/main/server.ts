@@ -10,8 +10,10 @@ import { syncWorkspace } from './git-sync'
 import { appendMessage, deleteSession, listSessions, loadSession, setAssistantText } from './sessions'
 import { getWorkspaceDir, readAgentFile, readConfig, writeAgentFile, writeConfig } from './workspace'
 import { getUsage } from './usage'
+import { addDoc, deleteDoc, listDocs } from './docs'
 import {
   EFFORT_OPTIONS,
+  MAX_UPLOAD_BYTES,
   MODEL_OPTIONS,
   TRAINABLE_FILES,
   type AppConfig,
@@ -100,6 +102,22 @@ export async function startServer(): Promise<number> {
     } catch (e) {
       res.status(400).json({ error: (e as Error).message })
     }
+  })
+
+  // Uploaded "documents" the agent can read & answer about (NotebookLM-style sources).
+  app.get('/api/docs', (_req, res) => res.json(listDocs()))
+  app.post('/api/docs/upload', express.raw({ type: '*/*', limit: MAX_UPLOAD_BYTES }), (req, res) => {
+    const name = decodeURIComponent(String(req.header('x-filename') ?? '')).trim()
+    const buf = req.body as Buffer
+    if (!name) return res.status(400).json({ error: 'missing x-filename header' })
+    if (!Buffer.isBuffer(buf) || buf.length === 0) return res.status(400).json({ error: 'empty upload' })
+    addDoc(name, buf)
+      .then((doc) => res.json(doc))
+      .catch((e) => res.status(500).json({ error: (e as Error).message }))
+  })
+  app.delete('/api/docs/:id', (req, res) => {
+    deleteDoc(req.params.id)
+    res.json({ ok: true })
   })
 
   app.post('/api/sync', (_req, res) => res.json(syncWorkspace()))

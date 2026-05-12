@@ -146,3 +146,30 @@ export const TRAINABLE_FILES: AgentFileRef[] = [
   { path: 'knowledge/05-campaign-learnings.md', label: 'Knowledge — Campaign learnings' },
   { path: 'knowledge/_inputs-needed.md', label: 'Knowledge — Inputs still needed' }
 ]
+
+// --- Uploaded documents (the "sources" the agent can read & answer about — NotebookLM-style) ----
+
+/** A file the marketer uploaded into the agent's `uploads/` folder. */
+export interface UploadedDoc {
+  /** Stable id = the stored filename inside `uploads/`. */
+  id: string
+  /** Original filename as uploaded. */
+  name: string
+  /** Path (relative to the agent workspace) the agent should Read to use this doc — the `.md` sidecar
+   *  for converted Office files, or the original file for PDFs / text files. */
+  agentPath: string
+  kind: 'word' | 'powerpoint' | 'excel' | 'pdf' | 'text' | 'other'
+  /** Bytes of the original file. */
+  size: number
+  /** ms epoch when it was uploaded. */
+  addedAt: number
+  /** True if we converted it to a text/markdown sidecar (Word/PowerPoint/Excel). */
+  converted: boolean
+  /** True if the file can't be used at all (old binary Office format / unreadable). */
+  unsupported: boolean
+  /** Short human note — what we did, or why it can't be read. */
+  note: string
+}
+
+/** The cap the upload endpoint accepts (also enforced client-side for a nicer message). */
+export const MAX_UPLOAD_BYTES = 40 * 1024 * 1024

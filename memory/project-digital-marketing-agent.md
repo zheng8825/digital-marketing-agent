@@ -137,6 +137,30 @@ finds the cache and skips re-extracting. Documented in README's "Build the .exe"
   list updated to 6 jobs (`/post /campaign /gtm /report /kol /ppt`); UI quick-action pills updated to
   match (6 pills + the Terminal button).
 
+**Added 2026-05-12 (document upload — NotebookLM-style "sources"):**
+- The marketer can upload PPT / Word / PDF / text files; the agent reads them and answers questions
+  grounded in them. Files land in `<workspace>/uploads/`: the original, plus — for `.docx`/`.pptx`/`.xlsx`
+  — a `.md` sidecar holding the extracted text (the agent reads the sidecar; `.pptx` is slide-by-slide
+  with speaker notes; `.xlsx` is CSV per sheet). PDFs & text files stay as-is (Claude Code reads PDFs
+  natively). `uploads/_index.md` is an auto-maintained table the agent reads to know what's available
+  and which file to open for each; `uploads/.docs.json` is the UI's metadata (hidden from the agent).
+  Old binary `.doc`/`.ppt`/`.xls` are rejected with a "re-save as .docx/.pptx or PDF" note.
+- New files: `src/main/doc-extract.ts` (pure-JS extraction — `mammoth` for docx, hand-rolled `jszip`
+  parsers for pptx slide XML & xlsx; new deps `mammoth` + `jszip` in `dependencies`) and `src/main/docs.ts`
+  (`getUploadsDir`/`listDocs`/`addDoc`/`deleteDoc`/`rewriteIndex`). `UploadedDoc` type + `MAX_UPLOAD_BYTES`
+  (40 MB) in shared/types. Server: `GET /api/docs`, `POST /api/docs/upload` (raw body via
+  `express.raw({type:'*/*'})`, filename in `x-filename` header), `DELETE /api/docs/:id`. `ensureWorkspace()`
+  also mkdirs `uploads/`; `electron-builder.yml` ships an empty `uploads/` (filter `!uploads/**` +
+  `uploads/.gitkeep`); `.gitignore` excludes `agent-workspace/uploads/*` (local working area, not synced).
+- UI: a 3rd right-sidebar tab **"Docs"** (Notes / Docs / Train) — add-files button + drag-drop, the doc
+  list with kind/size/time, a per-doc checkbox ("use as a source for the next message"), "Ask" (pre-fills
+  the chat input referencing it) and remove. When sources are ticked, `send()` prepends
+  `[Use these uploaded sources to answer (read them first): <paths>]` to the outgoing message (the bubble
+  shows the clean text) and a "Using N sources: …" chip shows above the composer. A `Docs` button in the
+  quick-actions row jumps to the tab + opens the file picker. `agent-workspace/CLAUDE.md` gained an
+  "Uploaded documents — `uploads/`" section telling the agent to read `_index.md`, answer grounded, cite
+  which file/slide/section, and not invent content.
+
 **Still TODO:** the wife's-machine first run (clone or copy the `.exe`, walk the setup wizard, real
 chat). Optional later: a UI view that reads claude-mem's SQLite memory.
 
