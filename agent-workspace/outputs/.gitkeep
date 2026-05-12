@@ -1,0 +1,7 @@
+# The agent saves generated deliverables here:
+#   content/    – social post copy, content calendars
+#   campaigns/  – one folder per campaign (plan, KOL briefs, ad build-sheets)
+#   analytics/  – monthly reports, UTM convention + log, competitor scans
+#   assets/     – creative briefs + links to creative files
+# These subfolders are created on demand. Generated work IS committed (so it syncs A<->B);
+# big binaries are not — link them from analytics/ or assets/ instead.

@@ -1,0 +1,490 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Bot,
+  BookOpen,
+  Copy,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Save,
+  Send,
+  StopCircle,
+  Trash2,
+  Wrench
+} from 'lucide-react'
+import type { AgentFileRef, ChatMessage, SessionMeta, SetupStatus } from '@shared/types'
+import { api, relTime, streamChat } from './api'
+
+type Status = 'idle' | 'working' | 'error'
+
+const QUICK_ACTIONS: { cmd: string; label: string; hint: string }[] = [
+  { cmd: '/post', label: 'Social post', hint: 'trilingual FB/IG/TikTok copy + hashtags + calendar row' },
+  { cmd: '/campaign', label: 'Campaign plan', hint: 'seasonal/launch plan + ad copy + KOLs + UTMs' },
+  { cmd: '/report', label: 'Monthly report', hint: 'turn raw numbers into a report + recommendations' },
+  { cmd: '/kol', label: 'KOL / research', hint: 'shortlists, briefs, outreach, competitor scan' }
+]
+
+export default function App(): JSX.Element {
+  const [setup, setSetup] = useState<SetupStatus | null>(null)
+  const [setupDismissed, setSetupDismissed] = useState(false)
+  const [sessions, setSessions] = useState<SessionMeta[]>([])
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [input, setInput] = useState('')
+  const [status, setStatus] = useState<Status>('idle')
+  const [statusMsg, setStatusMsg] = useState('Ready')
+  const [streaming, setStreaming] = useState('')
+  const [toolLog, setToolLog] = useState<string[]>([])
+
+  const [rightTab, setRightTab] = useState<'notes' | 'train'>('notes')
+  const [notes, setNotes] = useState(() => localStorage.getItem('ma:notes') ?? '')
+  const [trainFiles, setTrainFiles] = useState<AgentFileRef[]>([])
+  const [trainPath, setTrainPath] = useState('CLAUDE.md')
+  const [trainContent, setTrainContent] = useState('')
+  const [trainDirty, setTrainDirty] = useState(false)
+  const [trainNote, setTrainNote] = useState('')
+  const [syncNote, setSyncNote] = useState('')
+  const [syncing, setSyncing] = useState(false)
+
+  const abortRef = useRef<AbortController | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const chatEndRef = useRef<HTMLDivElement | null>(null)
+
+  const refreshSessions = useCallback(() => {
+    api.listSessions().then(setSessions).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    api.getSetup().then(setSetup).catch(() => {})
+    refreshSessions()
+    api.trainableFiles().then(setTrainFiles).catch(() => {})
+  }, [refreshSessions])
+
+  useEffect(() => {
+    localStorage.setItem('ma:notes', notes)
+  }, [notes])
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, streaming, toolLog])
+
+  const loadTrainFile = useCallback((path: string) => {
+    setTrainPath(path)
+    api
+      .getAgentFile(path)
+      .then((r) => {
+        setTrainContent(r.content)
+        setTrainDirty(false)
+      })
+      .catch((e) => setTrainNote(`Couldn't load: ${e.message}`))
+  }, [])
+
+  useEffect(() => {
+    if (rightTab === 'train' && !trainContent && !trainDirty) loadTrainFile(trainPath)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rightTab])
+
+  function newChat(): void {
+    abortRef.current?.abort()
+    setActiveId(null)
+    setMessages([])
+    setStreaming('')
+    setToolLog([])
+    setStatus('idle')
+    setStatusMsg('Ready')
+    setInput('')
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
+  function openSession(id: string): void {
+    if (status === 'working') return
+    api
+      .getSession(id)
+      .then((s) => {
+        setActiveId(s.id)
+        setMessages(s.messages)
+        setStreaming('')
+        setToolLog([])
+        setStatus('idle')
+        setStatusMsg('Ready')
+      })
+      .catch(() => {})
+  }
+
+  function removeSession(id: string, e: React.MouseEvent): void {
+    e.stopPropagation()
+    api.deleteSession(id).then(() => {
+      if (activeId === id) newChat()
+      refreshSessions()
+    })
+  }
+
+  async function send(): Promise<void> {
+    const text = input.trim()
+    if (!text || status === 'working') return
+    const userMsg: ChatMessage = { role: 'user', content: text, ts: Date.now() }
+    setMessages((m) => [...m, userMsg])
+    setInput('')
+    setStreaming('')
+    setToolLog([])
+    setStatus('working')
+    setStatusMsg('Thinking…')
+    const ac = new AbortController()
+    abortRef.current = ac
+    let acc = ''
+    let convId = activeId ?? undefined
+    let isNew = !activeId
+    try {
+      await streamChat(
+        { conversationId: convId, message: text },
+        (ev) => {
+          if (ev.type === 'session') {
+            convId = ev.id
+            if (isNew) {
+              setActiveId(ev.id)
+              isNew = false
+              refreshSessions()
+            }
+          } else if (ev.type === 'delta') {
+            acc += ev.text
+            setStreaming(acc)
+            setStatusMsg('Replying…')
+          } else if (ev.type === 'tool') {
+            setToolLog((t) => [...t, ev.summary])
+            setStatusMsg(`Working: ${ev.summary}`)
+          } else if (ev.type === 'done') {
+            setMessages((m) => [...m, { role: 'assistant', content: acc || '(no response)', ts: Date.now() }])
+            setStreaming('')
+            setStatus('idle')
+            setStatusMsg('Ready')
+            refreshSessions()
+          } else if (ev.type === 'error') {
+            setMessages((m) => [
+              ...m,
+              { role: 'assistant', content: `⚠️ ${ev.message}`, ts: Date.now() }
+            ])
+            setStreaming('')
+            setStatus('error')
+            setStatusMsg('Error — see the message above')
+            refreshSessions()
+          }
+        },
+        ac.signal
+      )
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') {
+        setStatus('error')
+        setStatusMsg((e as Error).message)
+      }
+    } finally {
+      if (abortRef.current === ac) abortRef.current = null
+    }
+  }
+
+  function stop(): void {
+    abortRef.current?.abort()
+    if (streaming) setMessages((m) => [...m, { role: 'assistant', content: streaming, ts: Date.now() }])
+    setStreaming('')
+    setStatus('idle')
+    setStatusMsg('Stopped')
+  }
+
+  function quick(cmd: string): void {
+    setInput((v) => (v.trim() ? v : cmd + ' '))
+    inputRef.current?.focus()
+  }
+
+  function saveTrain(): void {
+    api
+      .putAgentFile(trainPath, trainContent)
+      .then(() => {
+        setTrainDirty(false)
+        setTrainNote('Saved. The agent will use this next time it reads that file.')
+        setTimeout(() => setTrainNote(''), 4000)
+      })
+      .catch((e) => setTrainNote(`Save failed: ${e.message}`))
+  }
+
+  function doSync(): void {
+    setSyncing(true)
+    setSyncNote('')
+    api
+      .sync()
+      .then((r) => setSyncNote(r.message))
+      .catch((e) => setSyncNote(e.message))
+      .finally(() => setSyncing(false))
+  }
+
+  const dot = status === 'working' ? 'bg-amber-400 pulse-dot' : status === 'error' ? 'bg-rose-500' : 'bg-emerald-400'
+  const showSetup = setup && !setupDismissed && (!setup.claudeInstalled || setup.apiKeyInEnv || !setup.claudeMemInstalled)
+
+  const greeting = useMemo(
+    () => "Hi — I'm your ASUS Malaysia notebook marketing agent. Ask me for social copy, a campaign plan, a monthly report, KOL help… or use the quick buttons below. Type in 中文 / English / Bahasa Melayu — whatever you like.",
+    []
+  )
+
+  return (
+    <div className="flex h-screen w-screen flex-col bg-ink-950 text-gray-100">
+      {/* Header */}
+      <header className="flex items-center justify-between border-b border-ink-700 bg-ink-900 px-5 py-2.5">
+        <div className="flex items-center gap-2.5">
+          <div className="grid h-7 w-7 place-items-center rounded-md bg-accent/15 text-accent">
+            <Bot size={16} />
+          </div>
+          <div>
+            <h1 className="text-sm font-bold leading-tight">Marketing Agent</h1>
+            <p className="text-[11px] leading-tight text-gray-500">ASUS Malaysia · notebooks</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="hidden text-xs text-gray-400 sm:inline">{statusMsg}</span>
+          <span className={`inline-block h-2 w-2 rounded-full ${dot}`} />
+          <button
+            onClick={doSync}
+            disabled={syncing}
+            title="Commit & push your training/output changes to GitHub"
+            className="flex items-center gap-1.5 rounded-md border border-ink-700 bg-ink-850 px-2.5 py-1 text-xs text-gray-300 hover:bg-ink-800 disabled:opacity-50"
+          >
+            {syncing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Sync
+          </button>
+        </div>
+      </header>
+
+      {showSetup && (
+        <div className="flex items-start gap-3 border-b border-amber-900/60 bg-amber-950/40 px-5 py-2 text-xs text-amber-200">
+          <Wrench size={14} className="mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <span className="font-semibold">Setup needed: </span>
+            {!setup?.claudeInstalled && (
+              <span>Install Claude Code (<code className="rounded bg-black/30 px-1">npm i -g @anthropic-ai/claude-code</code>) then <code className="rounded bg-black/30 px-1">claude login</code> with your Pro/Max plan. </span>
+            )}
+            {setup?.apiKeyInEnv && (
+              <span>⚠️ <code className="rounded bg-black/30 px-1">ANTHROPIC_API_KEY</code> is set in your environment — that would bill the paid API instead of your subscription. Unset it. </span>
+            )}
+            {!setup?.claudeMemInstalled && (
+              <span>For long-term memory, run <code className="rounded bg-black/30 px-1">npx claude-mem install</code>. </span>
+            )}
+            <button className="ml-1 underline" onClick={() => api.getSetup().then(setSetup)}>Re-check</button>
+          </div>
+          <button className="underline" onClick={() => setSetupDismissed(true)}>Dismiss</button>
+        </div>
+      )}
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left: chat history */}
+        <aside className="hidden w-60 shrink-0 flex-col border-r border-ink-700 bg-ink-900 md:flex">
+          <div className="flex items-center justify-between border-b border-ink-700 px-4 py-3">
+            <h2 className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Chats</h2>
+            <button onClick={newChat} title="New chat" className="text-gray-400 hover:text-white">
+              <Plus size={16} />
+            </button>
+          </div>
+          <div className="scroll-thin flex-1 space-y-0.5 overflow-y-auto p-2">
+            <button
+              onClick={newChat}
+              className={`group flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm ${activeId === null ? 'bg-ink-800 text-gray-100' : 'text-gray-300 hover:bg-ink-850'}`}
+            >
+              <Plus size={14} className="shrink-0 text-gray-500" />
+              New chat
+            </button>
+            {sessions.map((s) => (
+              <div
+                key={s.id}
+                onClick={() => openSession(s.id)}
+                className={`group flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 ${activeId === s.id ? 'bg-ink-800' : 'hover:bg-ink-850'}`}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-gray-200">{s.title}</p>
+                  <p className="text-[11px] text-gray-500">{relTime(s.updatedAt)}</p>
+                </div>
+                <button
+                  onClick={(e) => removeSession(s.id, e)}
+                  title="Delete"
+                  className="hidden text-gray-500 hover:text-rose-400 group-hover:block"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        {/* Center: chat */}
+        <main className="flex min-w-0 flex-1 flex-col">
+          <div className="scroll-thin flex-1 space-y-3 overflow-y-auto p-5">
+            {messages.length === 0 && !streaming && (
+              <div className="mr-auto max-w-[80%] rounded-2xl rounded-bl-md bg-ink-850 px-4 py-3 text-sm text-gray-200">
+                <p className="msg-body">{greeting}</p>
+              </div>
+            )}
+            {messages.map((m, i) => (
+              <Bubble key={i} role={m.role} text={m.content} />
+            ))}
+            {toolLog.map((t, i) => (
+              <div key={`tool-${i}`} className="mr-auto flex max-w-[80%] items-center gap-1.5 rounded-lg bg-ink-900 px-2.5 py-1 text-[11px] text-gray-500">
+                <Wrench size={11} /> {t}
+              </div>
+            ))}
+            {streaming && <Bubble role="assistant" text={streaming} streaming />}
+            {status === 'working' && !streaming && (
+              <div className="mr-auto flex items-center gap-2 rounded-2xl rounded-bl-md bg-ink-850 px-4 py-2.5 text-sm text-gray-400">
+                <Loader2 size={14} className="animate-spin" /> {statusMsg}
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* quick actions + input */}
+          <div className="border-t border-ink-700 bg-ink-900 px-4 pb-3 pt-2.5">
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {QUICK_ACTIONS.map((q) => (
+                <button
+                  key={q.cmd}
+                  onClick={() => quick(q.cmd)}
+                  title={q.hint}
+                  className="rounded-full border border-ink-700 bg-ink-850 px-3 py-1 text-xs text-gray-300 hover:border-accent/50 hover:text-white"
+                >
+                  {q.label}
+                </button>
+              ))}
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                send()
+              }}
+              className="flex items-end gap-2"
+            >
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    send()
+                  }
+                }}
+                rows={2}
+                placeholder="Ask the agent…  (Enter to send, Shift+Enter for a new line)"
+                className="scroll-thin flex-1 resize-none rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-600 focus:border-accent/60 focus:outline-none"
+              />
+              {status === 'working' ? (
+                <button
+                  type="button"
+                  onClick={stop}
+                  className="grid h-9 w-9 place-items-center rounded-lg bg-rose-600/80 text-white hover:bg-rose-600"
+                  title="Stop"
+                >
+                  <StopCircle size={16} />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim()}
+                  className="grid h-9 w-9 place-items-center rounded-lg bg-accent text-accent-fg hover:brightness-110 disabled:opacity-40"
+                  title="Send"
+                >
+                  <Send size={16} />
+                </button>
+              )}
+            </form>
+          </div>
+        </main>
+
+        {/* Right: workspace / training */}
+        <aside className="hidden w-80 shrink-0 flex-col border-l border-ink-700 bg-ink-900 lg:flex">
+          <div className="flex border-b border-ink-700 text-xs">
+            {(['notes', 'train'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setRightTab(t)}
+                className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 font-semibold uppercase tracking-wider ${rightTab === t ? 'bg-ink-850 text-gray-100' : 'text-gray-500 hover:text-gray-300'}`}
+              >
+                {t === 'notes' ? <BookOpen size={13} /> : <Bot size={13} />}
+                {t === 'notes' ? 'Notes' : 'Train agent'}
+              </button>
+            ))}
+          </div>
+
+          {rightTab === 'notes' ? (
+            <div className="flex flex-1 flex-col gap-2 p-3">
+              <p className="text-[11px] text-gray-500">Scratchpad — drafts, ideas, outputs. Saved on this machine.</p>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Notes, drafts, pasted outputs…"
+                className="scroll-thin flex-1 resize-none rounded-lg border border-ink-700 bg-ink-850 p-3 text-sm text-gray-100 placeholder:text-gray-600 focus:border-sky-500/60 focus:outline-none"
+              />
+              <div className="flex gap-2">
+                <button onClick={() => setNotes('')} className="rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-xs text-gray-300 hover:bg-ink-800">Clear</button>
+                <button onClick={() => navigator.clipboard.writeText(notes)} className="flex items-center gap-1.5 rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-xs text-gray-300 hover:bg-ink-800"><Copy size={12} /> Copy</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-1 flex-col gap-2 p-3">
+              <p className="text-[11px] text-gray-500">
+                Teach the agent: edit its instructions or knowledge. Changes persist and (after Sync) reach the other machine.
+              </p>
+              <select
+                value={trainPath}
+                onChange={(e) => loadTrainFile(e.target.value)}
+                className="rounded-lg border border-ink-700 bg-ink-850 px-2 py-1.5 text-xs text-gray-200 focus:outline-none"
+              >
+                {trainFiles.map((f) => (
+                  <option key={f.path} value={f.path}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+              <textarea
+                value={trainContent}
+                onChange={(e) => {
+                  setTrainContent(e.target.value)
+                  setTrainDirty(true)
+                }}
+                spellCheck={false}
+                className="scroll-thin flex-1 resize-none rounded-lg border border-ink-700 bg-ink-850 p-3 font-mono text-[12px] leading-relaxed text-gray-100 focus:border-accent/60 focus:outline-none"
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={saveTrain}
+                  disabled={!trainDirty}
+                  className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:brightness-110 disabled:opacity-40"
+                >
+                  <Save size={12} /> Save
+                </button>
+                <button onClick={() => loadTrainFile(trainPath)} className="rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-xs text-gray-300 hover:bg-ink-800">Revert</button>
+                {trainNote && <span className="truncate text-[11px] text-gray-400">{trainNote}</span>}
+              </div>
+            </div>
+          )}
+
+          {syncNote && (
+            <div className="border-t border-ink-700 px-3 py-2 text-[11px] text-gray-400">
+              <span className="msg-body">{syncNote}</span>
+            </div>
+          )}
+        </aside>
+      </div>
+    </div>
+  )
+}
+
+function Bubble({ role, text, streaming }: { role: 'user' | 'assistant'; text: string; streaming?: boolean }): JSX.Element {
+  const isUser = role === 'user'
+  return (
+    <div
+      className={
+        isUser
+          ? 'ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-sm text-accent-fg'
+          : 'mr-auto max-w-[80%] rounded-2xl rounded-bl-md bg-ink-850 px-4 py-2.5 text-sm text-gray-100'
+      }
+    >
+      <p className="msg-body">
+        {text}
+        {streaming && <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-gray-400 align-middle" />}
+      </p>
+    </div>
+  )
+}

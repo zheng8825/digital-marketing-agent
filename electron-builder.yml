@@ -1,0 +1,44 @@
+appId: com.zheng8825.marketing-agent-dashboard
+productName: Marketing Agent
+copyright: Copyright © 2026
+
+directories:
+  buildResources: build
+  output: release
+
+files:
+  - out/**
+  - node_modules/**
+  - package.json
+  - "!**/*.map"
+
+# The agent's brain (persona, knowledge, skills) ships with the app as an unpacked resource,
+# then is copied to the per-user workspace on first run. Outputs are NOT shipped.
+extraResources:
+  - from: agent-workspace
+    to: agent-workspace
+    filter:
+      - "**/*"
+      - "!outputs/**"
+      - "outputs/.gitkeep"
+
+asar: true
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Marketing Agent
+
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}

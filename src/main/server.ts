@@ -1,0 +1,114 @@
+// The local HTTP API the dashboard UI talks to. Runs in the Electron main process.
+// Localhost-only; CORS is wide-open on purpose (so the developer can also hit it from a browser).
+
+import express from 'express'
+import type { AddressInfo } from 'node:net'
+import { chat } from './claude-bridge'
+import { getSetupStatus } from './setup'
+import { syncWorkspace } from './git-sync'
+import { appendMessage, deleteSession, listSessions, loadSession, setAssistantText } from './sessions'
+import { readAgentFile, readConfig, writeAgentFile, writeConfig } from './workspace'
+import { TRAINABLE_FILES, type ChatStreamEvent } from '../shared/types'
+
+export async function startServer(): Promise<number> {
+  const app = express()
+  app.use(express.json({ limit: '4mb' }))
+  app.use((_req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+    if (_req.method === 'OPTIONS') return res.end()
+    next()
+  })
+
+  app.get('/api/health', (_req, res) => res.json({ ok: true }))
+  app.get('/api/setup', (_req, res) => res.json(getSetupStatus()))
+
+  app.get('/api/config', (_req, res) => res.json(readConfig()))
+  app.put('/api/config', (req, res) => res.json(writeConfig(req.body ?? {})))
+
+  app.get('/api/sessions', (_req, res) => res.json(listSessions()))
+  app.get('/api/sessions/:id', (req, res) => {
+    const s = loadSession(req.params.id)
+    return s ? res.json(s) : res.status(404).json({ error: 'not found' })
+  })
+  app.delete('/api/sessions/:id', (req, res) => {
+    deleteSession(req.params.id)
+    res.json({ ok: true })
+  })
+
+  // Files the marketer can view/edit to "train" the agent.
+  app.get('/api/agent/files', (_req, res) => res.json(TRAINABLE_FILES))
+  app.get('/api/agent/file', (req, res) => {
+    const path = String(req.query.path ?? '')
+    if (!TRAINABLE_FILES.some((f) => f.path === path)) return res.status(400).json({ error: 'not a trainable file' })
+    try {
+      res.json({ path, content: readAgentFile(path) })
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message })
+    }
+  })
+  app.put('/api/agent/file', (req, res) => {
+    const { path, content } = req.body ?? {}
+    if (!TRAINABLE_FILES.some((f) => f.path === path)) return res.status(400).json({ error: 'not a trainable file' })
+    try {
+      writeAgentFile(path, String(content ?? ''))
+      res.json({ ok: true })
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message })
+    }
+  })
+
+  app.post('/api/sync', (_req, res) => res.json(syncWorkspace()))
+
+  // Streaming chat (Server-Sent Events).
+  app.post('/api/chat', (req, res) => {
+    const message = String(req.body?.message ?? '').trim()
+    let conversationId: string | undefined = req.body?.conversationId || undefined
+    if (!message) return res.status(400).json({ error: 'empty message' })
+
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache, no-transform')
+    res.setHeader('Connection', 'keep-alive')
+    res.flushHeaders?.()
+
+    const isNew = !conversationId
+    let userMsgPersisted = false
+    let acc = ''
+    const send = (e: ChatStreamEvent): void => {
+      res.write(`data: ${JSON.stringify(e)}\n\n`)
+    }
+    const persistUserMsg = (id: string): void => {
+      if (userMsgPersisted) return
+      appendMessage(id, { role: 'user', content: message, ts: Date.now() })
+      userMsgPersisted = true
+    }
+    if (!isNew && conversationId) persistUserMsg(conversationId)
+
+    const handle = chat({
+      conversationId,
+      message,
+      onEvent: (e) => {
+        if (e.type === 'session') {
+          conversationId = e.id
+          if (isNew) persistUserMsg(e.id)
+        } else if (e.type === 'delta') {
+          acc += e.text
+          if (conversationId) setAssistantText(conversationId, acc)
+        } else if (e.type === 'done') {
+          if (conversationId) setAssistantText(conversationId, acc || '(no response)')
+        }
+        send(e)
+        if (e.type === 'done' || e.type === 'error') res.end()
+      }
+    })
+
+    req.on('close', () => handle.cancel())
+  })
+
+  return new Promise((resolve) => {
+    const server = app.listen(0, '127.0.0.1', () => {
+      resolve((server.address() as AddressInfo).port)
+    })
+  })
+}

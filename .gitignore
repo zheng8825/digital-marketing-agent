@@ -1,9 +1,31 @@
+# Node / build
+node_modules/
+out/
+dist/
+release/
+*.tsbuildinfo
+.vite/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# App runtime data lives in the OS userData dir, not here.
+
+# Generated outputs from the agent: we DO commit these (they sync A<->B), but never big binaries.
+*.psd
+*.ai
+*.mp4
+*.mov
+*.zip
+
 # OS
 Thumbs.db
 Desktop.ini
 .DS_Store
 
-# Claude local-only settings
+# Claude Code local-only settings
 .claude/settings.local.json
 .claude/.last_session*
 .claude/shell-snapshots/
@@ -13,9 +35,3 @@ Desktop.ini
 *.tmp
 ~$*
 *.bak
-
-# Large binaries (put creative files in cloud storage, link them in assets/)
-*.psd
-*.ai
-*.mp4
-*.mov
