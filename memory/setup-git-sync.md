@@ -15,9 +15,12 @@ Key setup:
   the repo and tracked by git. Writing to either path is the same file.
 - On a new machine: `git pull` (or copy the folder), then recreate the junction with the
   command block in `README.md` (one time).
-- **No remote yet** — user chose "local repo only for now" (2026-05-12). When ready,
-  add GitHub private repo / a bare repo on OneDrive / company Git. Until then, A↔B sync
-  is by copying the folder or adding a remote.
+- **Remote added 2026-05-12:** `origin = https://github.com/zheng8825/digital-marketing-agent.git`.
+  First `git push -u origin main` needs the user's Git Credential Manager popup → have the
+  user run `! git push -u origin main` themselves if a push from Claude hangs. (Local folder
+  name stays `digital-marketing`; the GitHub repo / wife's clone is `digital-marketing-agent` —
+  names differing is fine.) This repo is now an **app codebase** (Electron marketing-agent), not
+  just marketing docs — see [[project-digital-marketing-agent]].
 
 When the user says "push 上 git" before switching machines → `git add -A && git commit`
 (and `git push` once a remote exists). When they say "git pull 繼續" → pull, check

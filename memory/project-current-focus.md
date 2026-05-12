@@ -13,12 +13,17 @@ traffic, search visibility, social following — and set up the tracking now so 
 later attribute downstream sales (sell-through is via retail/e-tail partners, so a
 clean UTM + GA4 + content-to-store handoff matters).
 
-Open inputs still needed from the user (asked 2026-05-12, update when answered):
-1. Which product lines / hero SKUs to push? (Vivobook / Zenbook / ProArt / ROG / TUF / Chromebook)
-2. Budget range and which channels are already running (Meta, Google, TikTok, YouTube, KOL, etc.)
-3. Owned assets: ASUS MY website sections, social handles, email list, existing creative
-4. Team & approvals — who can sign off, any brand-guideline constraints, agency partners
-5. Timeframe — campaign window, any tie-in moments (Raya, Merdeka, 11.11, 12.12, back-to-school, new launches)
+Known (intake 2026-05-12):
+- Push lines: **Vivobook** + **Zenbook**.
+- Channels already running: **Meta (FB/IG), Google (Search/PMax/YT), TikTok / KOL** — complement, don't assume ownership.
+- Budget: not disclosed.
+
+Still open (update when answered):
+1. Hero SKUs within Vivobook/Zenbook; any "do not feature"
+2. Budget range; who runs each channel (in-house / agency / regional team)
+3. Owned assets: ASUS MY website sections, social handles, email list, existing creative, GA4 access
+4. Team & approvals — who signs off, brand-guideline constraints, agency partners
+5. Timeframe — campaign window, tie-in moments (Raya, Merdeka, 11.11, 12.12, back-to-school, new launches)
 
 Working strategy doc: `strategy/00-brand-awareness-strategy.md`.
 
