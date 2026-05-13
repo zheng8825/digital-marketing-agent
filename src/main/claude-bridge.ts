@@ -10,7 +10,7 @@ import { relative, isAbsolute } from 'node:path'
 import type { ChatStreamEvent, TurnUsage } from '../shared/types'
 import { getModel, getThinkingTokens, getWorkspaceDir } from './workspace'
 import { recordTurn } from './usage'
-import { envWithClaudePath, resolveClaudeBin } from './claude-path'
+import { agentEnv, resolveClaudeBin } from './claude-path'
 
 const TURN_TIMEOUT_MS = 10 * 60 * 1000
 
@@ -29,18 +29,11 @@ interface ChatOptions {
 }
 
 function childEnv(): NodeJS.ProcessEnv {
-  let env: NodeJS.ProcessEnv = { ...process.env }
-  // Force the logged-in subscription (Pro/Max) — these would otherwise route to the paid API.
-  delete env.ANTHROPIC_API_KEY
-  delete env.ANTHROPIC_AUTH_TOKEN
-  delete env.CLAUDE_CODE_USE_BEDROCK
-  delete env.CLAUDE_CODE_USE_VERTEX
+  const env = agentEnv()
   // "Effort" = extended-thinking budget. 0 (or unset) means no extended thinking.
   const thinkTokens = getThinkingTokens()
   if (thinkTokens > 0) env.MAX_THINKING_TOKENS = String(thinkTokens)
   else delete env.MAX_THINKING_TOKENS
-  // Make sure the child can find `node` etc. on Windows when Explorer's PATH is stale.
-  env = envWithClaudePath(env)
   return env
 }
 

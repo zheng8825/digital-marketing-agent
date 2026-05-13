@@ -1,13 +1,13 @@
-// Find the `claude` CLI without trusting the inherited PATH.
+// Find the `claude` CLI without trusting the inherited PATH, and build the env it should run with.
 //
 // Why: on Windows, if the user installs Claude Code (which adds `%APPDATA%\npm` to the *user* PATH
 // in the registry) and then double-clicks the app *before* logging out, Explorer's environment is
 // stale → the spawned app inherits a PATH that doesn't include the npm-global dir → `cross-spawn`
 // can't find `claude.cmd` → every chat fails with ENOENT. We work around it by looking in the known
 // install locations ourselves; we also widen the child env's PATH so child→child lookups (`claude`
-// → `node`) keep working.
+// → `node`) keep working. The env helper also strips the API-key vars that would otherwise route
+// the agent through the paid API instead of the user's Pro/Max subscription.
 
-import spawn from 'cross-spawn'
 import { existsSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 
@@ -70,12 +70,14 @@ export function envWithClaudePath(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return { ...env, [key]: [...extra, current].filter(Boolean).join(delimiter) }
 }
 
-/** True if the bare claude command resolves on the inherited PATH (cross-spawn's lookup). */
-export function claudeOnPath(): boolean {
-  try {
-    const r = spawn.sync(isWin ? 'claude.cmd' : 'claude', ['--version'], { encoding: 'utf8', timeout: 4000 })
-    return r.status === 0
-  } catch {
-    return false
-  }
+/** Env to spawn `claude` (or any subprocess that may then invoke it) with: API-key / cloud-provider
+ *  vars stripped so it uses the logged-in Pro/Max subscription, plus our npm-global PATH widening.
+ *  Use this everywhere the agent (or a probe of its state, e.g. `auth status`) is spawned. */
+export function agentEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env }
+  delete env.ANTHROPIC_API_KEY
+  delete env.ANTHROPIC_AUTH_TOKEN
+  delete env.CLAUDE_CODE_USE_BEDROCK
+  delete env.CLAUDE_CODE_USE_VERTEX
+  return envWithClaudePath(env)
 }

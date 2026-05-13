@@ -7,19 +7,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { ClaudeAuthInfo, SetupStatus } from '../shared/types'
 import { ensureWorkspace } from './workspace'
-import { envWithClaudePath, resolveClaudeBin } from './claude-path'
-
-/** The env the agent runs with: API-key / cloud-provider vars stripped so it always uses the
- *  logged-in Pro/Max subscription, plus the npm-global dir prepended to PATH (in case Explorer's
- *  inherited PATH is stale). Mirrors `childEnv()` in claude-bridge.ts. */
-function agentEnv(): NodeJS.ProcessEnv {
-  const env = { ...process.env }
-  delete env.ANTHROPIC_API_KEY
-  delete env.ANTHROPIC_AUTH_TOKEN
-  delete env.CLAUDE_CODE_USE_BEDROCK
-  delete env.CLAUDE_CODE_USE_VERTEX
-  return envWithClaudePath(env)
-}
+import { agentEnv, resolveClaudeBin } from './claude-path'
 
 function claudeVersion(): string | undefined {
   try {
