@@ -199,6 +199,7 @@ export default function App(): JSX.Element {
     abortRef.current = ac
     let acc = ''
     let isNew = !activeId
+    let gotTerminal = false // got a `done` or `error` event — i.e. the turn really finished
     try {
       await streamChat({ conversationId: activeId ?? undefined, message: outgoing }, (ev) => {
         if (ev.type === 'session') {
@@ -208,17 +209,30 @@ export default function App(): JSX.Element {
         } else if (ev.type === 'tool') {
           setToolLog((t) => [...t, ev.summary]); setStatusMsg(`Working: ${ev.summary}`)
         } else if (ev.type === 'done') {
+          gotTerminal = true
           setMessages((m) => [...m, { role: 'assistant', content: acc || '(no response)', ts: Date.now() }])
           setStreaming(''); setStatus('idle'); setStatusMsg('Ready')
           if (ev.usage) setLastTurn(ev.usage)
           refreshSessions(); refreshUsage()
         } else if (ev.type === 'error') {
+          gotTerminal = true
           setMessages((m) => [...m, { role: 'assistant', content: `⚠️ ${ev.message}`, ts: Date.now() }])
           setStreaming(''); setStatus('error'); setStatusMsg('Error — see the message above'); refreshSessions()
         }
       }, ac.signal)
+      // Stream ended without a done/error event (connection dropped, agent killed, etc.) —
+      // don't leave the UI spinning on "Thinking…" forever.
+      if (!gotTerminal) {
+        const partial = acc.trim()
+        setMessages((m) => [...m, { role: 'assistant', content: partial ? `${partial}\n\n⚠️ (the agent stopped before finishing — try again, or restart the app)` : '⚠️ The agent stopped without replying. Try again — if it keeps happening, restart the app, or open Settings → Switch account.', ts: Date.now() }])
+        setStreaming(''); setStatus('error'); setStatusMsg('The agent stopped unexpectedly'); refreshSessions()
+      }
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') { setStatus('error'); setStatusMsg((e as Error).message) }
+      if ((e as Error).name !== 'AbortError') {
+        const msg = (e as Error).message || 'connection error'
+        setMessages((m) => [...m, { role: 'assistant', content: `⚠️ Couldn't reach the agent: ${msg}. Try again, or restart the app.`, ts: Date.now() }])
+        setStatus('error'); setStatusMsg(msg)
+      }
     } finally {
       if (abortRef.current === ac) abortRef.current = null
     }
