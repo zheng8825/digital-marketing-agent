@@ -12,6 +12,7 @@ import spawn from 'cross-spawn'
 import { shell } from 'electron'
 import type { ChildProcess } from 'node:child_process'
 import { getWorkspaceDir } from './workspace'
+import { envWithClaudePath, resolveClaudeBin } from './claude-path'
 
 export type SetupStep = 'install-claude' | 'login' | 'logout' | 'install-mem'
 
@@ -33,9 +34,9 @@ function commandFor(step: SetupStep): { cmd: string; args: string[]; display: st
     case 'install-claude':
       return { cmd: isWin ? 'npm.cmd' : 'npm', args: ['install', '-g', '@anthropic-ai/claude-code'], display: 'npm install -g @anthropic-ai/claude-code' }
     case 'login':
-      return { cmd: isWin ? 'claude.cmd' : 'claude', args: ['login'], display: 'claude login' }
+      return { cmd: resolveClaudeBin(), args: ['login'], display: 'claude login' }
     case 'logout':
-      return { cmd: isWin ? 'claude.cmd' : 'claude', args: ['auth', 'logout'], display: 'claude auth logout' }
+      return { cmd: resolveClaudeBin(), args: ['auth', 'logout'], display: 'claude auth logout' }
     case 'install-mem':
       return { cmd: isWin ? 'npx.cmd' : 'npx', args: ['--yes', 'claude-mem', 'install'], display: 'npx claude-mem install' }
   }
@@ -50,7 +51,7 @@ export function runSetupStep(step: SetupStep, opts: RunOpts): RunHandle {
 
   let child: ChildProcess
   try {
-    child = spawn(cmd, args, { cwd: getWorkspaceDir(), env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] })
+    child = spawn(cmd, args, { cwd: getWorkspaceDir(), env: envWithClaudePath({ ...process.env }), stdio: ['ignore', 'pipe', 'pipe'] })
   } catch (e) {
     opts.onLine(`(failed to start: ${(e as Error).message})`)
     return { done: Promise.resolve(), cancel: () => {} }

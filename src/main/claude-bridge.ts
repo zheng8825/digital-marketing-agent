@@ -10,8 +10,8 @@ import { relative, isAbsolute } from 'node:path'
 import type { ChatStreamEvent, TurnUsage } from '../shared/types'
 import { getModel, getThinkingTokens, getWorkspaceDir } from './workspace'
 import { recordTurn } from './usage'
+import { envWithClaudePath, resolveClaudeBin } from './claude-path'
 
-const CLAUDE_BIN = process.platform === 'win32' ? 'claude.cmd' : 'claude'
 const TURN_TIMEOUT_MS = 10 * 60 * 1000
 
 export interface ChatHandle {
@@ -29,7 +29,7 @@ interface ChatOptions {
 }
 
 function childEnv(): NodeJS.ProcessEnv {
-  const env = { ...process.env }
+  let env: NodeJS.ProcessEnv = { ...process.env }
   // Force the logged-in subscription (Pro/Max) — these would otherwise route to the paid API.
   delete env.ANTHROPIC_API_KEY
   delete env.ANTHROPIC_AUTH_TOKEN
@@ -39,6 +39,8 @@ function childEnv(): NodeJS.ProcessEnv {
   const thinkTokens = getThinkingTokens()
   if (thinkTokens > 0) env.MAX_THINKING_TOKENS = String(thinkTokens)
   else delete env.MAX_THINKING_TOKENS
+  // Make sure the child can find `node` etc. on Windows when Explorer's PATH is stale.
+  env = envWithClaudePath(env)
   return env
 }
 
@@ -92,7 +94,7 @@ export function chat({ conversationId, message, onEvent }: ChatOptions): ChatHan
 
   let child: ChildProcess
   try {
-    child = spawn(CLAUDE_BIN, args, { cwd, env: childEnv(), stdio: ['pipe', 'pipe', 'pipe'] })
+    child = spawn(resolveClaudeBin(), args, { cwd, env: childEnv(), stdio: ['pipe', 'pipe', 'pipe'] })
   } catch (err) {
     onEvent({ type: 'error', message: `Could not start \`claude\`: ${(err as Error).message}` })
     return { done: Promise.resolve(), cancel: () => {} }
