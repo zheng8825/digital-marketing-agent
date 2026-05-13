@@ -4,7 +4,7 @@
 import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
-import type { ChatMessage, SessionDetail, SessionMeta } from '../shared/types'
+import type { ChatMessage, Provider, SessionDetail, SessionMeta } from '../shared/types'
 
 const dir = join(app.getPath('userData'), 'sessions')
 function ensureDir(): void {
@@ -34,11 +34,13 @@ export function saveSession(s: SessionDetail): void {
   writeFileSync(file(s.id), JSON.stringify(s, null, 2), 'utf8')
 }
 
-/** Create or update a session, appending a message and refreshing title/timestamps. */
-export function appendMessage(id: string, msg: ChatMessage): SessionDetail {
+/** Create or update a session, appending a message and refreshing title/timestamps. The first
+ *  call (no existing session) stamps the provider; later calls inherit it. */
+export function appendMessage(id: string, msg: ChatMessage, provider?: Provider): SessionDetail {
   const now = Date.now()
   const existing = loadSession(id)
-  const s: SessionDetail = existing ?? { id, title: 'New chat', createdAt: now, updatedAt: now, messages: [] }
+  const s: SessionDetail = existing ?? { id, title: 'New chat', createdAt: now, updatedAt: now, messages: [], provider }
+  if (!existing && provider) s.provider = provider
   s.messages.push(msg)
   s.updatedAt = now
   s.title = titleFromMessages(s.messages)
@@ -67,7 +69,7 @@ export function listSessions(): SessionMeta[] {
     if (!f.endsWith('.json')) continue
     try {
       const s: SessionDetail = JSON.parse(readFileSync(join(dir, f), 'utf8'))
-      out.push({ id: s.id, title: s.title, createdAt: s.createdAt, updatedAt: s.updatedAt })
+      out.push({ id: s.id, title: s.title, createdAt: s.createdAt, updatedAt: s.updatedAt, provider: s.provider })
     } catch {
       /* skip corrupt */
     }

@@ -3,6 +3,9 @@
 //   login           -> claude login   (prints an auth URL; we open it in the browser)
 //   logout          -> claude auth logout   (sign out — used by "switch account")
 //   install-mem     -> npx --yes claude-mem install
+//   install-codex   -> npm install -g @openai/codex
+//   codex-login     -> codex login   (ChatGPT OAuth; prints an auth URL we open in the browser)
+//   codex-logout    -> codex logout
 //   open-terminal   -> opens a PowerShell window in the agent workspace (manual fallback)
 //
 // Best-effort: if a command needs TTY interaction and stalls, the user can cancel and run the
@@ -12,9 +15,21 @@ import spawn from 'cross-spawn'
 import { shell } from 'electron'
 import type { ChildProcess } from 'node:child_process'
 import { getWorkspaceDir } from './workspace'
-import { envWithClaudePath, resolveClaudeBin } from './claude-path'
+import { envWithCliPath, resolveClaudeBin, resolveCodexBin } from './cli-bin'
 
-export type SetupStep = 'install-claude' | 'login' | 'logout' | 'install-mem'
+export type SetupStep =
+  | 'install-claude'
+  | 'login'
+  | 'logout'
+  | 'install-mem'
+  | 'install-codex'
+  | 'codex-login'
+  | 'codex-logout'
+
+export const SETUP_STEPS: readonly SetupStep[] = [
+  'install-claude', 'login', 'logout', 'install-mem',
+  'install-codex', 'codex-login', 'codex-logout'
+] as const
 
 export interface RunHandle {
   done: Promise<void>
@@ -39,8 +54,17 @@ function commandFor(step: SetupStep): { cmd: string; args: string[]; display: st
       return { cmd: resolveClaudeBin(), args: ['auth', 'logout'], display: 'claude auth logout' }
     case 'install-mem':
       return { cmd: isWin ? 'npx.cmd' : 'npx', args: ['--yes', 'claude-mem', 'install'], display: 'npx claude-mem install' }
+    case 'install-codex':
+      return { cmd: isWin ? 'npm.cmd' : 'npm', args: ['install', '-g', '@openai/codex'], display: 'npm install -g @openai/codex' }
+    case 'codex-login':
+      return { cmd: resolveCodexBin(), args: ['login'], display: 'codex login' }
+    case 'codex-logout':
+      return { cmd: resolveCodexBin(), args: ['logout'], display: 'codex logout' }
   }
 }
+
+/** Login steps that print an OAuth URL we want to open in the browser automatically. */
+const LOGIN_STEPS: ReadonlySet<SetupStep> = new Set(['login', 'codex-login'])
 
 const URL_RE = /(https?:\/\/[^\s"'<>]+)/
 
@@ -51,7 +75,7 @@ export function runSetupStep(step: SetupStep, opts: RunOpts): RunHandle {
 
   let child: ChildProcess
   try {
-    child = spawn(cmd, args, { cwd: getWorkspaceDir(), env: envWithClaudePath({ ...process.env }), stdio: ['ignore', 'pipe', 'pipe'] })
+    child = spawn(cmd, args, { cwd: getWorkspaceDir(), env: envWithCliPath({ ...process.env }), stdio: ['ignore', 'pipe', 'pipe'] })
   } catch (e) {
     opts.onLine(`(failed to start: ${(e as Error).message})`)
     return { done: Promise.resolve(), cancel: () => {} }
@@ -70,7 +94,7 @@ export function runSetupStep(step: SetupStep, opts: RunOpts): RunHandle {
       buf = buf.slice(nl + (buf[nl] === '\r' && buf[nl + 1] === '\n' ? 2 : 1))
       if (line.trim()) {
         opts.onLine(line)
-        if (step === 'login' && !openedUrl) {
+        if (LOGIN_STEPS.has(step) && !openedUrl) {
           const m = URL_RE.exec(line)
           if (m) {
             openedUrl = true

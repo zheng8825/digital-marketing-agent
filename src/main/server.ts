@@ -3,21 +3,24 @@
 
 import express from 'express'
 import type { AddressInfo } from 'node:net'
-import { chat } from './claude-bridge'
+import { chat as claudeChat } from './claude-bridge'
+import { chat as codexChat } from './codex-bridge'
 import { getSetupStatus } from './setup'
-import { openTerminal, runSetupStep, type SetupStep } from './setup-run'
+import { openTerminal, runSetupStep, SETUP_STEPS, type SetupStep } from './setup-run'
 import { syncWorkspace } from './git-sync'
 import { appendMessage, deleteSession, listSessions, loadSession, setAssistantText } from './sessions'
-import { getWorkspaceDir, readAgentFile, readConfig, writeAgentFile, writeConfig } from './workspace'
+import { getProvider, getWorkspaceDir, readAgentFile, readConfig, writeAgentFile, writeConfig } from './workspace'
 import { getUsage } from './usage'
 import { addDoc, deleteDoc, listDocs } from './docs'
 import {
+  CODEX_MODEL_OPTIONS,
   EFFORT_OPTIONS,
   MAX_UPLOAD_BYTES,
   MODEL_OPTIONS,
   TRAINABLE_FILES,
   type AppConfig,
   type ChatStreamEvent,
+  type Provider,
   type ThinkingEffort
 } from '../shared/types'
 
@@ -53,7 +56,7 @@ export async function startServer(): Promise<number> {
   })
   app.post('/api/setup/run', (req, res) => {
     const step = String(req.body?.step ?? '') as SetupStep
-    if (!['install-claude', 'login', 'logout', 'install-mem'].includes(step)) return res.status(400).json({ error: 'unknown step' })
+    if (!SETUP_STEPS.includes(step)) return res.status(400).json({ error: 'unknown step' })
     res.setHeader('Content-Type', 'text/event-stream')
     res.setHeader('Cache-Control', 'no-cache, no-transform')
     res.setHeader('Connection', 'keep-alive')
@@ -74,7 +77,12 @@ export async function startServer(): Promise<number> {
   app.put('/api/config', (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>
     const patch: Partial<AppConfig> = {}
+    if ('provider' in body) {
+      const p = String(body.provider ?? '')
+      if (p === 'claude' || p === 'codex') patch.provider = p
+    }
     if ('model' in body) patch.model = String(body.model ?? '')
+    if ('codexModel' in body) patch.codexModel = String(body.codexModel ?? '')
     if ('thinkingEffort' in body) {
       const e = String(body.thinkingEffort ?? 'off')
       patch.thinkingEffort = (['off', 'standard', 'deep'].includes(e) ? e : 'off') as ThinkingEffort
@@ -82,7 +90,7 @@ export async function startServer(): Promise<number> {
     if ('workspaceDir' in body && typeof body.workspaceDir === 'string') patch.workspaceDir = body.workspaceDir
     res.json({ ...writeConfig(patch), workspaceDir: getWorkspaceDir() })
   })
-  app.get('/api/models', (_req, res) => res.json({ models: MODEL_OPTIONS, efforts: EFFORT_OPTIONS }))
+  app.get('/api/models', (_req, res) => res.json({ models: MODEL_OPTIONS, codexModels: CODEX_MODEL_OPTIONS, efforts: EFFORT_OPTIONS }))
   app.get('/api/usage', (_req, res) => res.json(getUsage()))
 
   app.get('/api/sessions', (_req, res) => res.json(listSessions()))
@@ -157,13 +165,24 @@ export async function startServer(): Promise<number> {
         /* socket gone */
       }
     }
+
+    // Resuming an existing chat must use the provider that started it — codex thread ids don't
+    // resolve in claude and vice versa. New chats use whatever's currently selected.
+    const activeProvider = getProvider()
+    let provider: Provider = activeProvider
+    if (!isNew && conversationId) {
+      const existing = loadSession(conversationId)
+      if (existing?.provider) provider = existing.provider
+    }
+
     const persistUserMsg = (id: string): void => {
       if (userMsgPersisted) return
-      appendMessage(id, { role: 'user', content: message, ts: Date.now() })
+      appendMessage(id, { role: 'user', content: message, ts: Date.now() }, provider)
       userMsgPersisted = true
     }
     if (!isNew && conversationId) persistUserMsg(conversationId)
 
+    const chat = provider === 'codex' ? codexChat : claudeChat
     const handle = chat({
       conversationId,
       message,
@@ -185,7 +204,7 @@ export async function startServer(): Promise<number> {
       }
     })
 
-    // Abort the `claude` turn only if the client *really* disconnects mid-stream. Listen on `res`
+    // Abort the CLI turn only if the client *really* disconnects mid-stream. Listen on `res`
     // (not `req` — on newer Node its 'close' fires as soon as the POST body is read, which would
     // kill every turn instantly and leave the UI stuck on "Thinking…"); guard with `finished`.
     res.on('close', () => { if (!finished) handle.cancel() })

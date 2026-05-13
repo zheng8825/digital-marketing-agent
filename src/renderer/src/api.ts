@@ -52,7 +52,7 @@ export const api = {
   getConfig: () => json<AppConfig & { workspaceDir?: string }>('/api/config'),
   putConfig: (patch: Partial<AppConfig>) =>
     json<AppConfig & { workspaceDir?: string }>('/api/config', { method: 'PUT', body: JSON.stringify(patch) }),
-  getModels: () => json<{ models: ModelOption[]; efforts: EffortOption[] }>('/api/models'),
+  getModels: () => json<{ models: ModelOption[]; codexModels: ModelOption[]; efforts: EffortOption[] }>('/api/models'),
   getUsage: () => json<UsageReport>('/api/usage'),
   openTerminal: () => json<{ ok: boolean }>('/api/setup/terminal', { method: 'POST' }),
   switchAccountInTerminal: () => json<{ ok: boolean }>('/api/auth/switch-terminal', { method: 'POST' }),
@@ -80,7 +80,14 @@ export async function uploadDoc(file: File): Promise<UploadedDoc> {
   return (await res.json()) as UploadedDoc
 }
 
-export type SetupStepId = 'install-claude' | 'login' | 'logout' | 'install-mem'
+export type SetupStepId =
+  | 'install-claude'
+  | 'login'
+  | 'logout'
+  | 'install-mem'
+  | 'install-codex'
+  | 'codex-login'
+  | 'codex-logout'
 
 /** Run a setup step on the host and stream its console output line by line. Resolves when it ends. */
 export async function streamSetupRun(

@@ -1,5 +1,16 @@
 // Types shared between the Electron main process and the renderer (the dashboard UI).
 
+/** Which AI plan the marketer is signed into. `claude` = Claude Pro/Max via the `claude` CLI;
+ *  `codex` = ChatGPT Plus/Pro via OpenAI's `codex` CLI. Both auth flows are OAuth in the browser —
+ *  no API key needed. The active provider is per-app, not per-chat (chats stay tied to the
+ *  provider that started them via the provider's own session id). */
+export type Provider = 'claude' | 'codex'
+
+export const PROVIDER_LABELS: Record<Provider, string> = {
+  claude: 'Claude Pro / Max',
+  codex: 'ChatGPT Plus / Pro'
+}
+
 export type ChatRole = 'user' | 'assistant'
 
 export interface ChatMessage {
@@ -9,11 +20,14 @@ export interface ChatMessage {
 }
 
 export interface SessionMeta {
-  /** The Claude Code session id (uuid). Also our conversation id. */
+  /** The CLI's session id (uuid). Also our conversation id. Tied to the provider that started it —
+   *  resuming a Codex session as Claude (or vice versa) doesn't work. */
   id: string
   title: string
   createdAt: number
   updatedAt: number
+  /** Which provider this chat was started with. Older sessions without this field are Claude. */
+  provider?: Provider
 }
 
 export interface SessionDetail extends SessionMeta {
@@ -54,7 +68,15 @@ export interface ClaudeAuthInfo {
   usingSubscription: boolean
 }
 
+/** What we know about Codex's auth — `codex login status` is exit-code-only, so we can't show
+ *  email/plan like we can for Claude. `loggedIn: undefined` means we couldn't probe (CLI missing). */
+export interface CodexAuthInfo {
+  loggedIn: boolean
+}
+
 export interface SetupStatus {
+  /** Which provider the app currently chats with. */
+  provider: Provider
   /** `claude` CLI found on PATH and reports a version. */
   claudeInstalled: boolean
   claudeVersion?: string
@@ -64,10 +86,18 @@ export interface SetupStatus {
   apiKeyInEnv: boolean
   /** claude-mem appears installed (hooks present in ~/.claude/settings.json or the binary resolves). */
   claudeMemInstalled: boolean
-  /** Path to the per-user agent workspace the app runs `claude` in. */
+  /** Path to the per-user agent workspace the app runs the CLI in. */
   workspaceDir: string
   /** Result of `claude auth status` (probed as the agent runs — API-key env vars stripped). */
   auth?: ClaudeAuthInfo
+
+  // --- Codex (ChatGPT Plus/Pro) ---
+  codexInstalled: boolean
+  codexVersion?: string
+  /** Result of `codex login status` (run with OPENAI_API_KEY stripped). */
+  codexAuth?: CodexAuthInfo
+  /** OPENAI_API_KEY is set in the environment. The agent strips it, but plain `codex` won't. */
+  openaiKeyInEnv: boolean
 }
 
 // --- Model & "effort" (thinking depth) selection -------------------------------------------------
@@ -84,6 +114,13 @@ export const MODEL_OPTIONS: ModelOption[] = [
   { id: 'sonnet', label: 'Claude Sonnet — balanced', note: 'Great for most marketing work: copy, campaigns, reports.' },
   { id: 'opus', label: 'Claude Opus — most capable', note: 'Deepest reasoning. Uses your plan’s quota faster — best on a Max plan.' },
   { id: 'haiku', label: 'Claude Haiku — fastest', note: 'Quick drafts and simple tasks. Lightest on your quota.' }
+]
+
+/** Models for the Codex (ChatGPT) provider — `codex exec --model <id>`. Empty id = the CLI default. */
+export const CODEX_MODEL_OPTIONS: ModelOption[] = [
+  { id: '', label: 'Default — what ChatGPT picks (recommended)', note: 'Lets the codex CLI pick the model your ChatGPT plan exposes.' },
+  { id: 'gpt-5.4', label: 'GPT-5.4 — most capable', note: 'Best quality. Heaviest on your ChatGPT plan quota.' },
+  { id: 'gpt-5', label: 'GPT-5 — balanced', note: 'Good for most marketing work.' }
 ]
 
 export type ThinkingEffort = 'off' | 'standard' | 'deep'
@@ -103,9 +140,13 @@ export const EFFORT_OPTIONS: EffortOption[] = [
 ]
 
 export interface AppConfig {
-  /** A ModelOption.id, or undefined for the default. */
+  /** Which CLI to spawn for chat. Undefined = 'claude' (the original behaviour). */
+  provider?: Provider
+  /** A ModelOption.id, or undefined for the default. Claude-side model selector. */
   model?: string
-  /** Thinking depth; undefined = 'off'. */
+  /** A CODEX_MODEL_OPTIONS.id, or undefined for the CLI default. */
+  codexModel?: string
+  /** Thinking depth; undefined = 'off'. (Claude-only — codex ignores it.) */
   thinkingEffort?: ThinkingEffort
   /** Override the agent workspace directory (advanced). */
   workspaceDir?: string

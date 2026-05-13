@@ -10,7 +10,7 @@ import { relative, isAbsolute } from 'node:path'
 import type { ChatStreamEvent, TurnUsage } from '../shared/types'
 import { getModel, getThinkingTokens, getWorkspaceDir } from './workspace'
 import { recordTurn } from './usage'
-import { agentEnv, resolveClaudeBin } from './claude-path'
+import { agentEnv, resolveClaudeBin } from './cli-bin'
 
 const TURN_TIMEOUT_MS = 10 * 60 * 1000
 

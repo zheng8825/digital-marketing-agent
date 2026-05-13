@@ -4,7 +4,7 @@
 import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync } from 'node:fs'
 import { dirname, join, resolve, normalize } from 'node:path'
-import { EFFORT_OPTIONS, type AppConfig, type ThinkingEffort } from '../shared/types'
+import { EFFORT_OPTIONS, type AppConfig, type Provider, type ThinkingEffort } from '../shared/types'
 
 function isDev(): boolean {
   return !app.isPackaged
@@ -61,12 +61,23 @@ export function ensureWorkspace(): string {
   return dir
 }
 
+/** Which CLI to spawn for the next chat. Defaults to 'claude' so existing installs are unchanged. */
+export function getProvider(): Provider {
+  return readConfig().provider === 'codex' ? 'codex' : 'claude'
+}
+
 /** The model alias to pass to `claude --model`. Empty config ("Default") → 'sonnet' — a deliberate
  *  choice so the agent is predictable & light on quota, not tied to whatever Claude Code's global
  *  config is set to (which on a dev machine might be Opus-1M — slow, pricey, burns the rate limit). */
 export function getModel(): string {
   const m = readConfig().model
   return m && m.trim() ? m.trim() : 'sonnet'
+}
+
+/** The model alias to pass to `codex exec --model`. Empty → let the codex CLI pick. */
+export function getCodexModel(): string {
+  const m = readConfig().codexModel
+  return m && m.trim() ? m.trim() : ''
 }
 
 export function getThinkingEffort(): ThinkingEffort {
