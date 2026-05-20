@@ -11,7 +11,11 @@ release/
 .env.local
 .env.*.local
 
-# App runtime data lives in the OS userData dir, not here.
+# App runtime data (config, chat sessions, usage) — machine-local, self-contained in the app folder.
+data/
+
+# Optional bundled portable Node (dropped in by hand on a machine with no Node installed).
+node/
 
 # Generated outputs from the agent: we DO commit these (they sync A<->B), but never big binaries.
 *.psd

@@ -1,12 +1,12 @@
 // Tracks token usage per day and all-time, in <userData>/usage.json. On a Pro/Max subscription
 // there's no per-token billing, so this is just throughput info for the marketer.
 
-import { app } from 'electron'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { TurnUsage, UsageBucket, UsageReport } from '../shared/types'
+import { userDataDir } from './runtime'
 
-const file = join(app.getPath('userData'), 'usage.json')
+const file = join(userDataDir(), 'usage.json')
 
 interface Store {
   allTime: UsageBucket

@@ -30,12 +30,14 @@ import type {
   ChatMessage,
   EffortOption,
   ModelOption,
+  Provider,
   SessionMeta,
   SetupStatus,
   TurnUsage,
   UploadedDoc,
   UsageReport
 } from '@shared/types'
+import { PROVIDER_LABELS } from '@shared/types'
 import { api, fmtDuration, fmtTokens, relTime, streamChat, uploadDoc } from './api'
 import SetupWizard from './SetupWizard'
 import SwitchAccountModal from './SwitchAccountModal'
@@ -58,7 +60,15 @@ function planLabel(t?: string): string {
   return m[t] ?? t[0].toUpperCase() + t.slice(1)
 }
 function authChip(setup: SetupStatus | null): { tone: 'ok' | 'warn' | 'dim'; label: string; title: string } | null {
-  if (!setup || !setup.claudeInstalled) return null // the setup banner covers "not installed"
+  if (!setup) return null
+  const provider = setup.provider
+  if (provider === 'codex') {
+    if (!setup.codexInstalled) return { tone: 'warn', label: 'codex not installed', title: 'The ChatGPT plan needs the codex CLI installed. Open Settings → "Switch account" or run the setup wizard.' }
+    if (setup.codexAuth?.loggedIn) return { tone: 'ok', label: 'ChatGPT Plus / Pro', title: 'Signed in to your ChatGPT plan via `codex login`. The agent runs on this subscription, not the paid OpenAI API.' }
+    return { tone: 'warn', label: 'sign in to ChatGPT', title: 'Not signed in. Run `codex login` (or open Settings → "Switch account").' }
+  }
+  // Claude (default).
+  if (!setup.claudeInstalled) return null // the setup banner covers "not installed"
   const a = setup.auth
   if (a?.usingSubscription) {
     const plan = planLabel(a.subscriptionType)
@@ -77,6 +87,13 @@ function authChip(setup: SetupStatus | null): { tone: 'ok' | 'warn' | 'dim'; lab
   return setup.claudeLoggedIn
     ? { tone: 'dim', label: 'signed in', title: "Claude looks signed in (couldn't read the account details). Open a terminal and run `claude auth status` to confirm." }
     : { tone: 'warn', label: 'sign in', title: 'Claude may not be signed in. Run `claude login` with your Pro/Max plan.' }
+}
+
+/** True if the *active* provider is ready for chat (installed + signed in). Drives the setup banner. */
+function providerReady(setup: SetupStatus | null): boolean {
+  if (!setup) return true // nothing to nag about until we know
+  if (setup.provider === 'codex') return !!setup.codexInstalled && !!setup.codexAuth?.loggedIn
+  return !!setup.claudeInstalled && !!setup.auth?.usingSubscription
 }
 
 const DOC_ACCEPT = '.pptx,.docx,.pdf,.xlsx,.csv,.txt,.md,.markdown,.json,.html,.htm,.rtf,.ppt,.doc,.xls'
@@ -121,6 +138,7 @@ export default function App(): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [models, setModels] = useState<ModelOption[]>([])
+  const [codexModels, setCodexModels] = useState<ModelOption[]>([])
   const [efforts, setEfforts] = useState<EffortOption[]>([])
   const [config, setConfig] = useState<AppConfig & { workspaceDir?: string }>({})
   const [usage, setUsage] = useState<UsageReport | null>(null)
@@ -140,12 +158,18 @@ export default function App(): JSX.Element {
   const refreshDocs = useCallback(() => api.listDocs().then(setDocs).catch(() => {}), [])
 
   useEffect(() => {
-    api.getSetup().then((s) => { setSetup(s); if (!s.claudeInstalled) setShowWizard(true) }).catch(() => {})
+    api.getSetup().then((s) => {
+      setSetup(s)
+      // First-launch: if neither provider is ready, walk her through signing in.
+      const claudeReady = s.claudeInstalled && !!s.auth?.usingSubscription
+      const codexReady = s.codexInstalled && !!s.codexAuth?.loggedIn
+      if (!claudeReady && !codexReady) setShowWizard(true)
+    }).catch(() => {})
     refreshSessions()
     refreshUsage()
     refreshDocs()
     api.trainableFiles().then(setTrainFiles).catch(() => {})
-    api.getModels().then((r) => { setModels(r.models); setEfforts(r.efforts) }).catch(() => {})
+    api.getModels().then((r) => { setModels(r.models); setCodexModels(r.codexModels); setEfforts(r.efforts) }).catch(() => {})
     api.getConfig().then(setConfig).catch(() => {})
   }, [refreshSessions, refreshUsage, refreshDocs])
 
@@ -304,7 +328,7 @@ export default function App(): JSX.Element {
   }
 
   const dot = status === 'working' ? 'bg-amber-400 pulse-dot' : status === 'error' ? 'bg-rose-500' : 'bg-emerald-400'
-  const showSetup = setup && !setupDismissed && (!setup.claudeInstalled || setup.apiKeyInEnv || !setup.claudeMemInstalled)
+  const showSetup = !!setup && !setupDismissed && (!providerReady(setup) || setup.apiKeyInEnv || setup.openaiKeyInEnv)
 
   const greeting = useMemo(
     () => "Hi — I'm your ASUS Malaysia notebook marketing agent. Ask me for social copy, a campaign plan, a monthly report, KOL help… or use the quick buttons below. Type in 中文 / English / Bahasa Melayu — whatever you like.",
@@ -339,29 +363,39 @@ export default function App(): JSX.Element {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Model + Effort — inline, always visible */}
-          <label className="hidden items-center gap-1.5 text-[11px] text-gray-500 md:flex">
-            Model
-            <select
-              value={config.model ?? ''}
-              onChange={(e) => changeConfig({ model: e.target.value })}
-              title={models.find((m) => m.id === (config.model ?? ''))?.note}
-              className="rounded-md border border-ink-700 bg-ink-850 px-1.5 py-1 text-xs text-gray-200 focus:outline-none"
-            >
-              {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-            </select>
-          </label>
-          <label className="hidden items-center gap-1.5 text-[11px] text-gray-500 md:flex">
-            Effort
-            <select
-              value={config.thinkingEffort ?? 'off'}
-              onChange={(e) => changeConfig({ thinkingEffort: e.target.value as AppConfig['thinkingEffort'] })}
-              title={efforts.find((x) => x.id === (config.thinkingEffort ?? 'off'))?.note}
-              className="rounded-md border border-ink-700 bg-ink-850 px-1.5 py-1 text-xs text-gray-200 focus:outline-none"
-            >
-              {efforts.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
-            </select>
-          </label>
+          {/* Model + Effort — inline, always visible. Codex provider hides Effort (no extended-thinking). */}
+          {(() => {
+            const isCodex = setup?.provider === 'codex'
+            const list = isCodex ? codexModels : models
+            const value = isCodex ? (config.codexModel ?? '') : (config.model ?? '')
+            const onChange = (v: string): void => changeConfig(isCodex ? { codexModel: v } : { model: v })
+            return (
+              <label className="hidden items-center gap-1.5 text-[11px] text-gray-500 md:flex">
+                Model
+                <select
+                  value={value}
+                  onChange={(e) => onChange(e.target.value)}
+                  title={list.find((m) => m.id === value)?.note}
+                  className="rounded-md border border-ink-700 bg-ink-850 px-1.5 py-1 text-xs text-gray-200 focus:outline-none"
+                >
+                  {list.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                </select>
+              </label>
+            )
+          })()}
+          {setup?.provider !== 'codex' && (
+            <label className="hidden items-center gap-1.5 text-[11px] text-gray-500 md:flex">
+              Effort
+              <select
+                value={config.thinkingEffort ?? 'off'}
+                onChange={(e) => changeConfig({ thinkingEffort: e.target.value as AppConfig['thinkingEffort'] })}
+                title={efforts.find((x) => x.id === (config.thinkingEffort ?? 'off'))?.note}
+                className="rounded-md border border-ink-700 bg-ink-850 px-1.5 py-1 text-xs text-gray-200 focus:outline-none"
+              >
+                {efforts.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+              </select>
+            </label>
+          )}
 
           {/* Usage chip */}
           <button
@@ -405,14 +439,19 @@ export default function App(): JSX.Element {
         </div>
       )}
 
-      {showSetup && (
+      {showSetup && setup && (
         <div className="flex items-start gap-3 border-b border-amber-900/60 bg-amber-950/40 px-5 py-2 text-xs text-amber-200">
           <Wrench size={14} className="mt-0.5 shrink-0" />
           <div className="flex-1">
             <span className="font-semibold">Setup needed: </span>
-            {!setup?.claudeInstalled && (<span>Install Claude Code (<code className="rounded bg-black/30 px-1">npm i -g @anthropic-ai/claude-code</code>) then <code className="rounded bg-black/30 px-1">claude login</code> with your Pro/Max plan. </span>)}
-            {setup?.apiKeyInEnv && (<span>⚠️ <code className="rounded bg-black/30 px-1">ANTHROPIC_API_KEY</code> is set in your environment — that would bill the paid API instead of your subscription. Unset it. </span>)}
-            {!setup?.claudeMemInstalled && (<span>For long-term memory, run <code className="rounded bg-black/30 px-1">npx claude-mem install</code>. </span>)}
+            {!providerReady(setup) && setup.provider === 'claude' && (
+              <span>Sign in to your Claude Pro/Max plan to start chatting (or switch to ChatGPT in the wizard). </span>
+            )}
+            {!providerReady(setup) && setup.provider === 'codex' && (
+              <span>Sign in to your ChatGPT Plus/Pro plan to start chatting (or switch to Claude in the wizard). </span>
+            )}
+            {setup.apiKeyInEnv && (<span>⚠️ <code className="rounded bg-black/30 px-1">ANTHROPIC_API_KEY</code> is set in your environment — the agent ignores it, but plain <code className="rounded bg-black/30 px-1">claude</code> commands won't. </span>)}
+            {setup.openaiKeyInEnv && (<span>⚠️ <code className="rounded bg-black/30 px-1">OPENAI_API_KEY</code> is set in your environment — the agent ignores it, but plain <code className="rounded bg-black/30 px-1">codex</code> commands won't. </span>)}
             <button className="ml-1 font-semibold underline" onClick={() => setShowWizard(true)}>Set it up</button>
             <button className="ml-2 underline" onClick={refreshSetup}>Re-check</button>
           </div>
@@ -587,12 +626,13 @@ export default function App(): JSX.Element {
       {showSettings && (
         <SettingsModal
           models={models}
+          codexModels={codexModels}
           efforts={efforts}
           config={config}
           setup={setup}
           onChange={changeConfig}
           onRecheckSetup={refreshSetup}
-          onOpenWorkspace={() => window.appBridge.openWorkspace()}
+          onOpenWorkspace={() => api.openWorkspace()}
           onOpenTerminal={openTerminal}
           onOpenWizard={() => { setShowSettings(false); setShowWizard(true) }}
           onSwitchAccount={() => { setShowSettings(false); setShowSwitchAccount(true) }}
@@ -617,6 +657,7 @@ function Bubble({ role, text, streaming }: { role: 'user' | 'assistant'; text: s
 
 function SettingsModal(props: {
   models: ModelOption[]
+  codexModels: ModelOption[]
   efforts: EffortOption[]
   config: AppConfig & { workspaceDir?: string }
   setup: SetupStatus | null
@@ -628,8 +669,12 @@ function SettingsModal(props: {
   onSwitchAccount: () => void
   onClose: () => void
 }): JSX.Element {
-  const { models, efforts, config, setup, onChange, onRecheckSetup, onOpenWorkspace, onOpenTerminal, onOpenWizard, onSwitchAccount, onClose } = props
-  const model = models.find((m) => m.id === (config.model ?? ''))
+  const { models, codexModels, efforts, config, setup, onChange, onRecheckSetup, onOpenWorkspace, onOpenTerminal, onOpenWizard, onSwitchAccount, onClose } = props
+  const provider: Provider = setup?.provider ?? 'claude'
+  const isCodex = provider === 'codex'
+  const activeModelList = isCodex ? codexModels : models
+  const activeModelId = isCodex ? (config.codexModel ?? '') : (config.model ?? '')
+  const model = activeModelList.find((m) => m.id === activeModelId)
   const effort = efforts.find((e) => e.id === (config.thinkingEffort ?? 'off'))
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/50 p-6" onClick={onClose}>
@@ -641,41 +686,61 @@ function SettingsModal(props: {
 
         <div className="space-y-4 text-sm">
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500">Model</label>
-            <select value={config.model ?? ''} onChange={(e) => onChange({ model: e.target.value })}
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500">AI plan (provider)</label>
+            <select value={provider} onChange={(e) => onChange({ provider: e.target.value as Provider })}
               className="w-full rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 text-gray-100 focus:border-accent/60 focus:outline-none">
-              {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              <option value="claude">{PROVIDER_LABELS.claude}</option>
+              <option value="codex">{PROVIDER_LABELS.codex}</option>
+            </select>
+            <p className="mt-1 text-[11px] text-gray-500">Each chat stays on the plan it started with. Switching only affects new chats.</p>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500">Model</label>
+            <select value={activeModelId} onChange={(e) => onChange(isCodex ? { codexModel: e.target.value } : { model: e.target.value })}
+              className="w-full rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 text-gray-100 focus:border-accent/60 focus:outline-none">
+              {activeModelList.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
             {model && <p className="mt-1 text-[11px] text-gray-500">{model.note}</p>}
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500">Effort (thinking depth)</label>
-            <select value={config.thinkingEffort ?? 'off'} onChange={(e) => onChange({ thinkingEffort: e.target.value as AppConfig['thinkingEffort'] })}
-              className="w-full rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 text-gray-100 focus:border-accent/60 focus:outline-none">
-              {efforts.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
-            </select>
-            {effort && <p className="mt-1 text-[11px] text-gray-500">{effort.note}</p>}
-          </div>
+          {!isCodex && (
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500">Effort (thinking depth)</label>
+              <select value={config.thinkingEffort ?? 'off'} onChange={(e) => onChange({ thinkingEffort: e.target.value as AppConfig['thinkingEffort'] })}
+                className="w-full rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 text-gray-100 focus:border-accent/60 focus:outline-none">
+                {efforts.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+              </select>
+              {effort && <p className="mt-1 text-[11px] text-gray-500">{effort.note}</p>}
+            </div>
+          )}
 
           <p className="text-[11px] text-gray-500">Changes take effect on your next message.</p>
 
           <div className="rounded-lg border border-ink-700 bg-ink-850 p-3 text-xs">
             <p className="mb-1 font-semibold text-gray-400">Setup &amp; account</p>
             <ul className="space-y-0.5 text-gray-400">
+              {/* Claude */}
               <li>{setup?.claudeInstalled ? '✅' : '❌'} Claude Code {setup?.claudeVersion ? `(${setup.claudeVersion})` : 'installed'}</li>
               {(() => {
                 const a = setup?.auth
                 if (a?.usingSubscription)
-                  return <li>✅ Signed in: <b className="text-gray-200">{a.email ?? '(account)'}</b> — Claude {planLabel(a.subscriptionType) || 'Pro/Max'} subscription <span className="text-gray-500">(the agent uses this, not the paid API)</span></li>
+                  return <li className="ml-4">→ <b className="text-gray-200">{a.email ?? '(account)'}</b> · Claude {planLabel(a.subscriptionType) || 'Pro/Max'}</li>
                 if (a?.loggedIn)
-                  return <li>⚠️ Agent auth: <b className="text-amber-300">{a.authMethod ?? a.apiProvider ?? 'an API method'}</b> — not a Pro/Max subscription. Run <code className="rounded bg-black/30 px-1">claude login</code> and pick your plan.</li>
+                  return <li className="ml-4 text-amber-300/90">→ via {a.authMethod ?? a.apiProvider ?? 'an API method'} — not a Pro/Max subscription</li>
                 if (a && !a.loggedIn)
-                  return <li>❌ Not signed in — run <code className="rounded bg-black/30 px-1">claude login</code> with your Pro/Max plan</li>
-                return <li>{setup?.claudeLoggedIn ? '✅' : '❌'} {setup?.claudeLoggedIn ? "Claude looks signed in — run `claude auth status` in a terminal to confirm the account" : 'Not signed in — run `claude login`'}</li>
+                  return <li className="ml-4">→ not signed in</li>
+                return setup?.claudeInstalled ? <li className="ml-4">→ {setup.claudeLoggedIn ? 'signed in (account unknown)' : 'not signed in'}</li> : null
               })()}
-              {setup?.apiKeyInEnv && <li className="text-amber-400/80">ℹ️ <code className="rounded bg-black/30 px-1">ANTHROPIC_API_KEY</code> is set in your environment — the agent ignores it (it always uses your subscription), but plain <code className="rounded bg-black/30 px-1">claude</code> commands you run won't.</li>}
-              <li>{setup?.claudeMemInstalled ? '✅' : '❌'} claude-mem (long-term memory)</li>
+              {setup?.apiKeyInEnv && <li className="ml-4 text-amber-400/80">ℹ️ <code className="rounded bg-black/30 px-1">ANTHROPIC_API_KEY</code> set in env — the agent ignores it, but plain <code className="rounded bg-black/30 px-1">claude</code> commands won't.</li>}
+              {/* Codex */}
+              <li className="mt-1">{setup?.codexInstalled ? '✅' : '❌'} Codex CLI {setup?.codexVersion ? `(${setup.codexVersion})` : '(ChatGPT Plus/Pro)'}</li>
+              {setup?.codexInstalled && (
+                <li className="ml-4">→ {setup.codexAuth?.loggedIn ? 'signed in to your ChatGPT plan' : 'not signed in'}</li>
+              )}
+              {setup?.openaiKeyInEnv && <li className="ml-4 text-amber-400/80">ℹ️ <code className="rounded bg-black/30 px-1">OPENAI_API_KEY</code> set in env — the agent ignores it, but plain <code className="rounded bg-black/30 px-1">codex</code> commands won't.</li>}
+              {/* claude-mem */}
+              <li className="mt-1">{setup?.claudeMemInstalled ? '✅' : '❌'} claude-mem (long-term memory — Claude only)</li>
             </ul>
             <div className="mt-2 flex flex-wrap gap-2">
               <button onClick={onSwitchAccount} className="flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/10 px-2 py-1 text-accent hover:bg-accent/20"><User size={12} /> Switch account</button>

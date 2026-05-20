@@ -1,17 +1,12 @@
 // Resolves & seeds the per-user "agent workspace" — the folder the `claude` CLI runs in.
 // Contains the marketing agent's CLAUDE.md (persona), knowledge/, .claude/ (skills+settings), outputs/.
 
-import { app } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync } from 'node:fs'
-import { dirname, join, resolve, normalize } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join, normalize } from 'node:path'
 import { EFFORT_OPTIONS, type AppConfig, type Provider, type ThinkingEffort } from '../shared/types'
+import { appRootDir, userDataDir } from './runtime'
 
-function isDev(): boolean {
-  return !app.isPackaged
-}
-
-const userData = app.getPath('userData')
-const configPath = join(userData, 'config.json')
+const configPath = join(userDataDir(), 'config.json')
 
 export function readConfig(): AppConfig {
   try {
@@ -28,34 +23,19 @@ export function writeConfig(patch: Partial<AppConfig>): AppConfig {
   return next
 }
 
-/** Where the bundled template workspace lives (in dev: the repo; packaged: process.resourcesPath). */
-function templateWorkspaceDir(): string {
-  if (isDev()) return resolve(app.getAppPath(), 'agent-workspace')
-  return join(process.resourcesPath, 'agent-workspace')
-}
-
-/** The active workspace dir: explicit config > (dev: repo's agent-workspace) > <userData>/agent-workspace. */
+/** The workspace the agent runs in. By default it's the repo's own `agent-workspace/` (which is
+ *  what syncs A↔B via git — the persona/knowledge/skills the marketer "trains"). A config override
+ *  is honored if it points somewhere that exists. */
 export function getWorkspaceDir(): string {
   const cfg = readConfig()
   if (cfg.workspaceDir && existsSync(cfg.workspaceDir)) return cfg.workspaceDir
-  if (isDev()) {
-    const repoWs = resolve(app.getAppPath(), 'agent-workspace')
-    if (existsSync(join(repoWs, 'CLAUDE.md'))) return repoWs
-  }
-  return join(userData, 'agent-workspace')
+  return join(appRootDir(), 'agent-workspace')
 }
 
-/** Copy the template into the active workspace if it isn't there yet. Safe to call on every launch. */
+/** Make sure the workspace and its working subfolders exist. Safe to call on every launch. */
 export function ensureWorkspace(): string {
   const dir = getWorkspaceDir()
-  if (!existsSync(join(dir, 'CLAUDE.md'))) {
-    mkdirSync(dir, { recursive: true })
-    const tpl = templateWorkspaceDir()
-    if (existsSync(tpl)) {
-      cpSync(tpl, dir, { recursive: true })
-    }
-  }
-  // make sure these exist even if the template filter excluded them
+  mkdirSync(dir, { recursive: true })
   mkdirSync(join(dir, 'outputs'), { recursive: true })
   mkdirSync(join(dir, 'uploads'), { recursive: true })
   return dir

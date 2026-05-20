@@ -1,28 +1,35 @@
 # Marketing Agent Dashboard (ASUS MY notebooks)
 
-A double-click Windows app for an in-house ASUS Malaysia notebook marketer. It starts a
-local server and opens a web UI where she chats with a digital-marketing agent (trilingual
-EN / Bahasa Melayu / Chinese) for: social post copy, seasonal campaign plans + ad copy,
-monthly reporting / analytics, and KOL management + competitor research. She can keep
-**"training"** the agent from the UI (refine its instructions & knowledge). The agent runs
-on **Claude Code with a Claude Pro/Max subscription** (no API key, no per-token billing) and
-keeps **long-term memory** via [claude-mem](https://github.com/thedotmack/claude-mem).
-
-> Status: the app builds and runs (UI, chat bridge, local API, setup wizard, model/effort/usage,
-> sync). Still pending real-world use: the wife's-machine first-run, and exercising the agent's
-> skills on live campaigns. See the commit history.
+A **double-click, no-install** local web app for an in-house ASUS Malaysia notebook marketer.
+You double-click `start.bat`; it serves a dashboard on `localhost` and opens it in your normal
+browser. There's no installer and no desktop app — nothing shows up in "installed programs".
+She chats with a digital-marketing agent (trilingual EN / Bahasa Melayu / Chinese) for: social
+post copy, seasonal campaign plans + ad copy, monthly reporting / analytics, and KOL management
++ competitor research, and can keep **"training"** the agent from the UI (refine its instructions
+& knowledge). The agent runs on the user's own **Claude Pro/Max** *or* **ChatGPT Plus/Pro**
+subscription (no API key, no per-token billing); with Claude it keeps **long-term memory** via
+[claude-mem](https://github.com/thedotmack/claude-mem).
 
 ## How it works
-- **Electron** app → `electron-builder` produces a portable `Marketing Agent-<version>-portable.exe`
-  and an NSIS installer (`Marketing Agent-<version>-x64.exe`). Double-click → an Express server starts
-  in-process → a window opens with the dashboard (it's a local web UI, so you can also open
-  `http://localhost:<port>` in a browser).
-- The app spawns the **`claude` CLI** in headless streaming mode, with working directory
+- **No Electron, no .exe.** `start.bat` finds Node.js (system install, or a portable copy you drop
+  into a `node/` folder), runs `npm install` + `npm run build` on the first run (or after an update),
+  then starts a plain **Node + Express** server. The server hosts the built React UI and the local API
+  on `127.0.0.1`, and opens your default browser at that address.
+- **Runs hidden, stop on purpose.** The server is launched with no visible console (via
+  `launch-hidden.vbs`), so there's nothing to close by accident — closing the browser tab does *not*
+  stop it. To stop it, double-click **`stop.bat`**. Logs go to `data/server.log`.
+- **Friendly bits for the non-technical user:** first launch auto-creates a **Desktop shortcut**
+  ("Marketing Agent", with icon); launching while it's already running just **re-opens the tab**
+  instead of starting a second copy; and `start.bat` **auto-rebuilds after a `git pull`** (it stamps
+  the built commit in `out/.build-commit`), so there's nothing to remember.
+- It spawns the **`claude`** (or **`codex`**) CLI in headless streaming mode, with working directory
   `agent-workspace/` (the agent's persona = `agent-workspace/CLAUDE.md`, its knowledge =
   `agent-workspace/knowledge/`, its skills/slash-commands = `agent-workspace/.claude/skills/`).
-- `ANTHROPIC_API_KEY` is stripped from the child environment so it always uses the logged-in
-  **Pro/Max subscription**, never the paid API.
+- API-key env vars (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) are stripped from the child environment
+  so it always uses the logged-in **subscription**, never the paid API.
 - **claude-mem** hooks Claude Code's session lifecycle to persist & recall long-term memory.
+- Machine-local data (config, chat history, usage) lives in a self-contained `data/` folder next to
+  `start.bat` — not in AppData.
 
 ## Prerequisites (one-time, on whichever machine runs the app)
 **The app has a built-in setup wizard** (opens automatically the first time, or via the gear → "Run
@@ -49,7 +56,7 @@ supported — re-save as `.docx`/`.pptx` or export to PDF.) Uploads stay on this
 ## Settings, model, account & usage
 - Gear (top-right) or the inline header dropdowns: **Model** (Default / Sonnet / Opus / Haiku — passed
   to `claude --model`) and **Effort** (Quick / Standard / Deep — sets the extended-thinking budget via
-  `MAX_THINKING_TOKENS`). Saved in `<userData>/config.json`; applies to the next message.
+  `MAX_THINKING_TOKENS`). Saved in `data/config.json`; applies to the next message.
 - The header **account chip** (and Settings → "Setup & account") shows who's signed in and on what plan —
   it runs `claude auth status`; green means the agent is using your Claude Pro/Max subscription, not the
   paid API. Settings has a **Switch account** button (signs out, then opens the browser to sign in to a
@@ -66,28 +73,33 @@ supported — re-save as `.docx`/`.pptx` or export to PDF.) Uploads stay on this
 ## Develop (machine A — the developer)
 ```powershell
 npm install
-npm run dev          # Vite UI + Electron with hot reload
+npm run dev          # Vite UI (port 5273, hot reload) + Node server (port 8731), /api proxied
 ```
+Then open http://localhost:5273. (`npm run dev:server` / `npm run dev:web` run the two halves separately.)
 
-## Build the .exe
+## Build / run locally
 ```powershell
-npm run build        # → release/  →  "Marketing Agent-<version>-portable.exe"  +  "Marketing Agent-<version>-x64.exe" (installer)
+npm run build        # vite build → out/renderer  +  esbuild → out/main/index.cjs
+npm start            # node out/main/index.cjs  (serves the UI, opens the browser)
 ```
-> First build downloads electron-builder's `winCodeSign` bundle, which contains macOS symlinks.
-> Extracting those needs symlink-create rights — turn on **Windows Settings → For developers →
-> Developer Mode** (or run the build from an elevated terminal) once, or `npm run build` fails with
-> `Cannot create symbolic link : A required privilege is not held by the client`. (`npm run dev` and
-> `npm run build:unpacked` don't need this.)
+Or just double-click **`start.bat`**, which does install + build (first run) then start.
 
-## Use on the wife's machine (machine B)
-1. Install the prerequisites above (Node, Claude Code + `claude login`, `npx claude-mem install`).
-2. Get the app: either copy over the built portable `.exe` / run the installer, **or** `git clone`
-   this repo and `npm install && npm run build`.
-3. Double-click the app. First run walks through any missing setup.
-4. Chat. Use the right "workspace" panel to refine the agent's instructions/knowledge — that
+## Use on the wife's machine (machine B) — no install
+1. Make sure **Node.js 20+** is available — either installed (https://nodejs.org), or bundled: on
+   machine A run `npm run fetch-node` (downloads a portable Node into `node/`), then copy the whole
+   folder over. With `node\node.exe` present, nothing needs installing on machine B.
+2. Get the app: `git clone` this repo (or copy the folder over).
+3. Double-click **`start.bat`** (first run installs + builds, a few minutes). It creates a **Desktop
+   shortcut** — after that she just double-clicks the "Marketing Agent" icon. The server runs hidden
+   and the browser opens automatically.
+4. First launch shows the **setup screen** to sign in to Claude Pro/Max or ChatGPT Plus/Pro (and,
+   optionally, install claude-mem) — all from the UI.
+5. To **stop** the agent, double-click **`stop.bat`** (closing the browser tab doesn't stop it).
+6. Chat. Use the right "workspace" panel to refine the agent's instructions/knowledge — that
    is "training" it. Hit **Sync** to commit & push those changes back to GitHub so machine A
-   sees them. (Requires `git` + GitHub auth on machine B — an SSH key on the account, or a
-   one-time Git Credential Manager login if that machine uses the `https://` remote.)
+   sees them. After pulling new app code, run **`update.bat`** (stops the instance + `git pull`);
+   the next `start.bat` rebuilds automatically. (Requires `git` + GitHub auth on machine B — an SSH
+   key on the account, or a one-time Git Credential Manager login if it uses the `https://` remote.)
 
 ## A ↔ B sync
 Remote: `origin = git@github.com:zheng8825/digital-marketing-agent.git` (SSH).
@@ -100,11 +112,17 @@ Remote: `origin = git@github.com:zheng8825/digital-marketing-agent.git` (SSH).
 ## Repo layout
 | Path | What |
 |---|---|
-| `src/main/` | Electron main process: Express server (`server.ts`), `claude` CLI bridge (`claude-bridge.ts`), workspace/config (`workspace.ts`), chat sessions (`sessions.ts`), token usage (`usage.ts`), setup detect/run (`setup.ts`, `setup-run.ts`), git sync (`git-sync.ts`) |
-| `src/preload/` | preload script + its `.d.ts` (the `window` API the renderer sees) |
+| `start.bat` | the launcher: single-instance check, find Node, install/build on first run or after an update, then launch the server hidden + open the browser, and make a desktop shortcut once |
+| `stop.bat` | stops the hidden server (and anything it spawned) by the recorded PID |
+| `update.bat` | stops the instance + `git pull` (next `start.bat` auto-rebuilds) |
+| `launch-hidden.vbs`, `create-shortcut.vbs` | run the server with no console window; create the desktop shortcut |
+| `src/main/` | Node server: entry (`index.ts`), Express server (`server.ts`), `claude`/`codex` CLI bridges (`claude-bridge.ts`, `codex-bridge.ts`), CLI discovery (`cli-bin.ts`), host runtime helpers (`runtime.ts`), workspace/config (`workspace.ts`), chat sessions (`sessions.ts`), token usage (`usage.ts`), setup detect/run (`setup.ts`, `setup-run.ts`), git sync (`git-sync.ts`) |
 | `src/renderer/` | Vite + React + TS + Tailwind renderer (the dashboard) — `src/App.tsx`, `src/SetupWizard.tsx`, `src/api.ts` |
 | `src/shared/` | types shared by main + renderer (`types.ts`) |
-| `agent-workspace/` | the spawned `claude`'s cwd — `CLAUDE.md` (persona), `knowledge/`, `.claude/skills/`, `outputs/` |
-| `build/` | app icon (`icon.png`) |
-| `electron.vite.config.ts`, `electron-builder.yml` | build config (electron-vite bundling; electron-builder packaging → `release/`) |
+| `agent-workspace/` | the spawned CLI's cwd — `CLAUDE.md` (persona), `knowledge/`, `.claude/skills/`, `outputs/` |
+| `build/` | app icon + build helpers (`build-server.mjs` = esbuild server bundle; `fetch-node.mjs` = download portable Node into `node/`) |
+| `vite.config.ts` | web build config (Vite → `out/renderer`) |
+| `out/` | build output (gitignored): `out/renderer` (UI), `out/main/index.cjs` (server) |
+| `data/` | machine-local runtime data (gitignored): config, chat sessions, usage, `server.pid`/`server.url`, `server.log` |
+| `node/` | optional bundled portable Node (gitignored) — present when delivered to a machine without Node |
 | `memory/` | Claude Code (dev assistant) memory for working on this repo — see `CLAUDE.md` |

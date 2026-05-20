@@ -1,7 +1,10 @@
-// The local HTTP API the dashboard UI talks to. Runs in the Electron main process.
-// Localhost-only; CORS is wide-open on purpose (so the developer can also hit it from a browser).
+// The local HTTP server: serves the built web UI and the API the dashboard talks to. Runs as a
+// plain Node process (started by index.ts). Localhost-only; CORS is wide-open on purpose (so the
+// developer can also hit the API from a separate browser/tab during development).
 
 import express from 'express'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import type { AddressInfo } from 'node:net'
 import { chat as claudeChat } from './claude-bridge'
 import { chat as codexChat } from './codex-bridge'
@@ -10,6 +13,7 @@ import { openTerminal, runSetupStep, SETUP_STEPS, type SetupStep } from './setup
 import { syncWorkspace } from './git-sync'
 import { appendMessage, deleteSession, listSessions, loadSession, setAssistantText } from './sessions'
 import { getProvider, getWorkspaceDir, readAgentFile, readConfig, writeAgentFile, writeConfig } from './workspace'
+import { appRootDir, openPath } from './runtime'
 import { getUsage } from './usage'
 import { addDoc, deleteDoc, listDocs } from './docs'
 import {
@@ -42,6 +46,15 @@ export async function startServer(): Promise<number> {
       const run = typeof req.body?.run === 'string' && req.body.run.trim() ? String(req.body.run) : undefined
       openTerminal(run)
       res.json({ ok: true })
+    } catch (e) {
+      res.status(500).json({ ok: false, error: (e as Error).message })
+    }
+  })
+  app.post('/api/open-workspace', (_req, res) => {
+    try {
+      const dir = getWorkspaceDir()
+      openPath(dir)
+      res.json({ ok: true, dir })
     } catch (e) {
       res.status(500).json({ ok: false, error: (e as Error).message })
     }
@@ -210,8 +223,18 @@ export async function startServer(): Promise<number> {
     res.on('close', () => { if (!finished) handle.cancel() })
   })
 
+  // Serve the built web UI (Vite output). Anything that isn't an /api route falls back to
+  // index.html so the single-page app handles its own routing.
+  const uiDir = join(appRootDir(), 'out', 'renderer')
+  if (existsSync(uiDir)) {
+    app.use(express.static(uiDir))
+    app.get(/^(?!\/api\/).*/, (_req, res) => res.sendFile(join(uiDir, 'index.html')))
+  }
+
+  // Honor a fixed port if asked (PORT env), else pick a free one. 127.0.0.1 = localhost only.
+  const wanted = Number(process.env.PORT) || 0
   return new Promise((resolve) => {
-    const server = app.listen(0, '127.0.0.1', () => {
+    const server = app.listen(wanted, '127.0.0.1', () => {
       resolve((server.address() as AddressInfo).port)
     })
   })

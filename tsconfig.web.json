@@ -24,7 +24,6 @@
   "include": [
     "src/renderer/**/*.ts",
     "src/renderer/**/*.tsx",
-    "src/preload/**/*.d.ts",
     "src/shared/**/*.ts"
   ]
 }

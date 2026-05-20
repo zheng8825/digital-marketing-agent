@@ -11,12 +11,9 @@ import type {
   UsageReport
 } from '@shared/types'
 
-let cachedBase: string | null = null
+// The UI is served by the same local server that hosts the API, so the API is same-origin.
 async function base(): Promise<string> {
-  if (cachedBase) return cachedBase
-  const port = await window.appBridge.getApiPort()
-  cachedBase = `http://127.0.0.1:${port}`
-  return cachedBase
+  return window.location.origin
 }
 
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
@@ -55,6 +52,7 @@ export const api = {
   getModels: () => json<{ models: ModelOption[]; codexModels: ModelOption[]; efforts: EffortOption[] }>('/api/models'),
   getUsage: () => json<UsageReport>('/api/usage'),
   openTerminal: () => json<{ ok: boolean }>('/api/setup/terminal', { method: 'POST' }),
+  openWorkspace: () => json<{ ok: boolean; dir?: string }>('/api/open-workspace', { method: 'POST' }),
   switchAccountInTerminal: () => json<{ ok: boolean }>('/api/auth/switch-terminal', { method: 'POST' }),
   listDocs: () => json<UploadedDoc[]>('/api/docs'),
   deleteDoc: (id: string) => json<{ ok: boolean }>(`/api/docs/${encodeURIComponent(id)}`, { method: 'DELETE' })

@@ -12,10 +12,10 @@
 // printed command in a terminal instead.
 
 import spawn from 'cross-spawn'
-import { shell } from 'electron'
 import type { ChildProcess } from 'node:child_process'
 import { getWorkspaceDir } from './workspace'
 import { envWithCliPath, resolveClaudeBin, resolveCodexBin } from './cli-bin'
+import { openExternal } from './runtime'
 
 export type SetupStep =
   | 'install-claude'
@@ -99,7 +99,7 @@ export function runSetupStep(step: SetupStep, opts: RunOpts): RunHandle {
           if (m) {
             openedUrl = true
             opts.onLine('(opening that link in your browser…)')
-            shell.openExternal(m[1]).catch(() => {})
+            openExternal(m[1])
           }
         }
       }

@@ -2,7 +2,7 @@
 // with its normal Read tool) can use it. Office formats (.docx/.pptx/.xlsx) get converted to a sidecar
 // .md; PDFs and plain-text-ish files are left as-is (Claude Code reads PDFs natively and text directly).
 //
-// Pure-JS only (mammoth + jszip) so electron-builder packaging stays simple — no native deps.
+// Pure-JS only (mammoth + jszip) — no native deps, so `npm install` on any machine just works.
 
 import mammoth from 'mammoth'
 import JSZip from 'jszip'

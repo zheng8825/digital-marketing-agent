@@ -1,12 +1,12 @@
 // Conversation index + transcript store, kept in the OS userData dir (not in the repo — chat logs
 // are machine-local; the agent's *training* lives in the workspace and that's what syncs).
 
-import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ChatMessage, Provider, SessionDetail, SessionMeta } from '../shared/types'
+import { userDataDir } from './runtime'
 
-const dir = join(app.getPath('userData'), 'sessions')
+const dir = join(userDataDir(), 'sessions')
 function ensureDir(): void {
   mkdirSync(dir, { recursive: true })
 }
