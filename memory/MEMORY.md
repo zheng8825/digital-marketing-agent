@@ -7,3 +7,4 @@ One line per memory. Full content lives in the linked file.
 - [Marketing context](project-current-focus.md) — wife's context: brand awareness + traffic, MY; pushing Vivobook + Zenbook; Meta/Google/TikTok already running
 - [Git sync setup](setup-git-sync.md) — this folder is the repo; memory/ is junctioned from ~/.claude; sync A↔B via git
 - [Working agreement](feedback-working-style.md) — user wants strategy + hands-on execution, files committed to git
+- [Codex CLI reference](reference-codex-cli.md) — `@openai/codex` subcommands & `codex exec --json` event schema (used by codex-bridge.ts)
