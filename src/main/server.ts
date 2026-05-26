@@ -40,6 +40,9 @@ function beginSse(res: Response): void {
   res.setHeader('Cache-Control', 'no-cache, no-transform')
   res.setHeader('Connection', 'keep-alive')
   res.setHeader('X-Accel-Buffering', 'no')
+  // Stop Chrome from withholding the first ~1KB to MIME-sniff the body (which makes the chat sit
+  // on "Thinking…" until you refresh). nosniff + the priming comment below get events flowing now.
+  res.setHeader('X-Content-Type-Options', 'nosniff')
   res.flushHeaders?.()
   res.socket?.setNoDelay(true)
   res.write(`:${' '.repeat(2048)}\n\n`)
