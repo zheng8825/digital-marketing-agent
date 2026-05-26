@@ -3,6 +3,7 @@
 // developer can also hit the API from a separate browser/tab during development).
 
 import express from 'express'
+import type { Response } from 'express'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AddressInfo } from 'node:net'
@@ -27,6 +28,26 @@ import {
   type Provider,
   type ThinkingEffort
 } from '../shared/types'
+
+/** Start a Server-Sent Events response that survives buffering proxies. Some corporate security /
+ *  antivirus gateways (and nginx) buffer a streamed response until they've seen several KB or the
+ *  connection closes — which makes the chat look stuck on "Thinking…" until you refresh. We disable
+ *  proxy buffering, turn off Nagle, send an up-front padding comment to blow past byte thresholds,
+ *  and heartbeat so intermediaries keep flushing. (`:`-prefixed lines are SSE comments the client
+ *  ignores.) Returns nothing; the caller writes `data:` frames and ends the response as usual. */
+function beginSse(res: Response): void {
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
+  res.setHeader('Cache-Control', 'no-cache, no-transform')
+  res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
+  res.flushHeaders?.()
+  res.socket?.setNoDelay(true)
+  res.write(`:${' '.repeat(2048)}\n\n`)
+  const hb = setInterval(() => {
+    try { res.write(': ping\n\n') } catch { /* socket gone */ }
+  }, 15000)
+  res.on('close', () => clearInterval(hb))
+}
 
 export async function startServer(): Promise<number> {
   const app = express()
@@ -70,10 +91,7 @@ export async function startServer(): Promise<number> {
   app.post('/api/setup/run', (req, res) => {
     const step = String(req.body?.step ?? '') as SetupStep
     if (!SETUP_STEPS.includes(step)) return res.status(400).json({ error: 'unknown step' })
-    res.setHeader('Content-Type', 'text/event-stream')
-    res.setHeader('Cache-Control', 'no-cache, no-transform')
-    res.setHeader('Connection', 'keep-alive')
-    res.flushHeaders?.()
+    beginSse(res)
     let finished = false
     const handle = runSetupStep(step, { onLine: (text) => res.write(`data: ${JSON.stringify({ type: 'line', text })}\n\n`) })
     handle.done.then(() => {
@@ -162,10 +180,7 @@ export async function startServer(): Promise<number> {
     let conversationId: string | undefined = req.body?.conversationId || undefined
     if (!message) return res.status(400).json({ error: 'empty message' })
 
-    res.setHeader('Content-Type', 'text/event-stream')
-    res.setHeader('Cache-Control', 'no-cache, no-transform')
-    res.setHeader('Connection', 'keep-alive')
-    res.flushHeaders?.()
+    beginSse(res)
 
     const isNew = !conversationId
     let userMsgPersisted = false

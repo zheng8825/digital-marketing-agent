@@ -6,9 +6,10 @@
 // newline-delimited JSON events of the form (see codex-rs/exec/src/exec_events.rs):
 //   {"type":"thread.started","thread_id":"…"}
 //   {"type":"turn.started"}
-//   {"type":"item.started"|"item.updated"|"item.completed","item":{"id":"…","details":{…}}}
-//     details.type ∈ "agent_message" (cumulative text) | "reasoning" | "command_execution"
-//                  | "file_change" | "mcp_tool_call" | "web_search" | "todo_list" | "error"
+//   {"type":"item.started"|"item.updated"|"item.completed","item":{"id":"…","type":"…",…}}
+//     item.type ∈ "agent_message" (cumulative `text`) | "reasoning" | "command_execution"
+//               | "file_change" | "mcp_tool_call" | "web_search" | "todo_list" | "error"
+//     (older builds nested these fields under item.details — handleItem accepts both shapes)
 //   {"type":"turn.completed","usage":{input_tokens,…}} | {"type":"turn.failed","error":"…"}
 //   {"type":"error","message":"…"}
 // We translate these to the same ChatStreamEvent union as claude-bridge so the UI doesn't care
@@ -145,7 +146,9 @@ export function chat({ conversationId, message, onEvent }: ChatOptions): ChatHan
 
   const handleItem = (item: any): void => {
     const id = String(item?.id ?? '')
-    const d = item?.details
+    // codex 0.13x emits item fields flat (item.type / item.text); older/other builds nested them
+    // under item.details. Accept whichever is present so the agent's reply is actually captured.
+    const d = item?.details && typeof item.details === 'object' ? item.details : item
     if (!d || typeof d !== 'object') return
     if (d.type === 'agent_message' && typeof d.text === 'string') {
       emitAgentTextDelta(id, d.text)
@@ -195,7 +198,12 @@ export function chat({ conversationId, message, onEvent }: ChatOptions): ChatHan
       }
       case 'error': {
         const msg = typeof obj.message === 'string' ? obj.message : 'codex reported an error'
-        finish({ type: 'error', message: decorateError(msg, !!conversationId) })
+        // NON-fatal. codex emits transient `error` events while it retries the API call
+        // (e.g. "Reconnecting... 2/5 (request timed out)") and then recovers on its own.
+        // Treating these as terminal was killing perfectly good turns. Surface them as a
+        // status note and keep going; a real failure arrives via `turn.failed` or a non-zero
+        // exit (handled in `close`), and a true hang is caught by the 10-min timeout.
+        onEvent({ type: 'tool', name: 'status', summary: msg.slice(0, 140) })
         break
       }
       default:

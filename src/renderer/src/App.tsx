@@ -325,6 +325,9 @@ export default function App(): JSX.Element {
   }
   function changeConfig(patch: Partial<AppConfig>): void {
     api.putConfig(patch).then(setConfig).catch(() => {})
+    // Provider lives in both config and setup (setup.provider drives the auth chip / banner).
+    // Re-probe setup so those reflect the switch instead of lagging until the next manual recheck.
+    if ('provider' in patch) refreshSetup()
   }
 
   const dot = status === 'working' ? 'bg-amber-400 pulse-dot' : status === 'error' ? 'bg-rose-500' : 'bg-emerald-400'
@@ -365,7 +368,7 @@ export default function App(): JSX.Element {
         <div className="flex items-center gap-2">
           {/* Model + Effort — inline, always visible. Codex provider hides Effort (no extended-thinking). */}
           {(() => {
-            const isCodex = setup?.provider === 'codex'
+            const isCodex = (config.provider ?? setup?.provider) === 'codex'
             const list = isCodex ? codexModels : models
             const value = isCodex ? (config.codexModel ?? '') : (config.model ?? '')
             const onChange = (v: string): void => changeConfig(isCodex ? { codexModel: v } : { model: v })
@@ -670,7 +673,9 @@ function SettingsModal(props: {
   onClose: () => void
 }): JSX.Element {
   const { models, codexModels, efforts, config, setup, onChange, onRecheckSetup, onOpenWorkspace, onOpenTerminal, onOpenWizard, onSwitchAccount, onClose } = props
-  const provider: Provider = setup?.provider ?? 'claude'
+  // config.provider is the source of truth the user controls; setup.provider only updates on a
+  // setup probe, so binding the selector to it made switching look like it did nothing.
+  const provider: Provider = config.provider ?? setup?.provider ?? 'claude'
   const isCodex = provider === 'codex'
   const activeModelList = isCodex ? codexModels : models
   const activeModelId = isCodex ? (config.codexModel ?? '') : (config.model ?? '')
