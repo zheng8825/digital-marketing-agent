@@ -13,10 +13,21 @@ export const PROVIDER_LABELS: Record<Provider, string> = {
 
 export type ChatRole = 'user' | 'assistant'
 
+/** A tool the agent used to produce a reply (Read, Edit, Bash, WebSearch, …). `file` is filled
+ *  whenever the tool acted on a workspace-relative path — used to make it clickable in the UI so
+ *  the marketer can jump straight to that knowledge file and edit it. Forward-slash separators. */
+export interface ToolRef {
+  name: string
+  summary: string
+  file?: string
+}
+
 export interface ChatMessage {
   role: ChatRole
   content: string
   ts: number
+  /** Tools the assistant used for this turn. Only set on assistant messages. */
+  tools?: ToolRef[]
 }
 
 export interface SessionMeta {
@@ -48,7 +59,7 @@ export interface TurnUsage {
 export type ChatStreamEvent =
   | { type: 'session'; id: string } // emitted once when a new session id is known
   | { type: 'delta'; text: string } // a chunk of assistant text
-  | { type: 'tool'; name: string; summary: string } // the agent used a tool (e.g. wrote a file)
+  | { type: 'tool'; name: string; summary: string; file?: string } // the agent used a tool (e.g. wrote a file)
   | { type: 'done'; usage?: TurnUsage } // turn finished successfully
   | { type: 'error'; message: string }
 

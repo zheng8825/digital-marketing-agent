@@ -62,20 +62,20 @@ function decorateError(raw: string, hadConversationId: boolean): string {
   return m
 }
 
-function toolSummary(name: string, input: unknown, cwd: string): string {
+function toolInfo(name: string, input: unknown, cwd: string): { summary: string; file?: string } {
   const inp = (input ?? {}) as Record<string, unknown>
   const fp = inp.file_path ?? inp.path ?? inp.notebook_path
   if (typeof fp === 'string') {
-    const rel = isAbsolute(fp) ? relative(cwd, fp) || fp : fp
-    return `${name} ${rel}`
+    const rel = (isAbsolute(fp) ? relative(cwd, fp) || fp : fp).replace(/\\/g, '/')
+    return { summary: `${name} ${rel}`, file: rel }
   }
   if (name === 'Bash' && typeof inp.command === 'string') {
-    return `Bash: ${(inp.command as string).slice(0, 80)}`
+    return { summary: `Bash: ${(inp.command as string).slice(0, 80)}` }
   }
   if ((name === 'WebSearch' || name === 'WebFetch') && (inp.query || inp.url)) {
-    return `${name}: ${String(inp.query ?? inp.url).slice(0, 80)}`
+    return { summary: `${name}: ${String(inp.query ?? inp.url).slice(0, 80)}` }
   }
-  return name
+  return { summary: name }
 }
 
 export function chat({ conversationId, message, onEvent }: ChatOptions): ChatHandle {
@@ -146,7 +146,8 @@ export function chat({ conversationId, message, onEvent }: ChatOptions): ChatHan
         if (Array.isArray(content)) {
           for (const block of content) {
             if (block?.type === 'tool_use' && typeof block.name === 'string') {
-              onEvent({ type: 'tool', name: block.name, summary: toolSummary(block.name, block.input, cwd) })
+              const info = toolInfo(block.name, block.input, cwd)
+              onEvent({ type: 'tool', name: block.name, summary: info.summary, file: info.file })
             }
           }
         }

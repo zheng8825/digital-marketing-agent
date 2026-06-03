@@ -60,7 +60,7 @@ function decorateError(raw: string, hadConversationId: boolean): string {
   return m
 }
 
-function toolSummaryFromDetails(details: any, cwd: string): { name: string; summary: string } | null {
+function toolSummaryFromDetails(details: any, cwd: string): { name: string; summary: string; file?: string } | null {
   const t = details?.type
   if (t === 'command_execution') {
     const cmd = String(details.command ?? '').replace(/\s+/g, ' ').slice(0, 80)
@@ -69,8 +69,8 @@ function toolSummaryFromDetails(details: any, cwd: string): { name: string; summ
   if (t === 'file_change') {
     const ch = Array.isArray(details.changes) ? details.changes[0] : undefined
     const raw = String(ch?.path ?? ch?.file ?? ch?.target ?? '')
-    const rel = raw && isAbsolute(raw) ? relative(cwd, raw) || raw : raw
-    return { name: 'Edit', summary: rel ? `Edit ${rel}` : 'Edit' }
+    const rel = (raw && isAbsolute(raw) ? relative(cwd, raw) || raw : raw).replace(/\\/g, '/')
+    return { name: 'Edit', summary: rel ? `Edit ${rel}` : 'Edit', file: rel || undefined }
   }
   if (t === 'web_search') {
     return { name: 'WebSearch', summary: `WebSearch: ${String(details.query ?? details.action ?? '').slice(0, 80)}` }

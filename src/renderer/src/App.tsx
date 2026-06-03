@@ -33,6 +33,7 @@ import type {
   Provider,
   SessionMeta,
   SetupStatus,
+  ToolRef,
   TurnUsage,
   UploadedDoc,
   UsageReport
@@ -118,7 +119,7 @@ export default function App(): JSX.Element {
   const [status, setStatus] = useState<Status>('idle')
   const [statusMsg, setStatusMsg] = useState('Ready')
   const [streaming, setStreaming] = useState('')
-  const [toolLog, setToolLog] = useState<string[]>([])
+  const [toolLog, setToolLog] = useState<ToolRef[]>([])
 
   const [rightTab, setRightTab] = useState<'notes' | 'docs' | 'train'>('notes')
   const [notes, setNotes] = useState(() => localStorage.getItem('ma:notes') ?? '')
@@ -181,6 +182,13 @@ export default function App(): JSX.Element {
     api.getAgentFile(path).then((r) => { setTrainContent(r.content); setTrainDirty(false) })
       .catch((e) => setTrainNote(`Couldn't load: ${e.message}`))
   }, [])
+  /** Jump to the right-side editor and load a knowledge/agent file (used by the clickable tool refs
+   *  under each assistant reply, so the marketer can edit what the agent just read). */
+  const openTrainFile = useCallback((path: string) => {
+    setRightTab('train')
+    loadTrainFile(path)
+  }, [loadTrainFile])
+  const trainablePaths = useMemo(() => new Set(trainFiles.map((f) => f.path)), [trainFiles])
   useEffect(() => {
     if (rightTab === 'train' && !trainContent && !trainDirty) loadTrainFile(trainPath)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -222,6 +230,7 @@ export default function App(): JSX.Element {
     const ac = new AbortController()
     abortRef.current = ac
     let acc = ''
+    const turnTools: ToolRef[] = []
     let isNew = !activeId
     let gotTerminal = false // got a `done` or `error` event — i.e. the turn really finished
     try {
@@ -231,10 +240,12 @@ export default function App(): JSX.Element {
         } else if (ev.type === 'delta') {
           acc += ev.text; setStreaming(acc); setStatusMsg('Replying…')
         } else if (ev.type === 'tool') {
-          setToolLog((t) => [...t, ev.summary]); setStatusMsg(`Working: ${ev.summary}`)
+          const ref: ToolRef = { name: ev.name, summary: ev.summary, file: ev.file }
+          turnTools.push(ref)
+          setToolLog((t) => [...t, ref]); setStatusMsg(`Working: ${ev.summary}`)
         } else if (ev.type === 'done') {
           gotTerminal = true
-          setMessages((m) => [...m, { role: 'assistant', content: acc || '(no response)', ts: Date.now() }])
+          setMessages((m) => [...m, { role: 'assistant', content: acc || '(no response)', ts: Date.now(), tools: turnTools.length ? turnTools : undefined }])
           setStreaming(''); setStatus('idle'); setStatusMsg('Ready')
           if (ev.usage) setLastTurn(ev.usage)
           refreshSessions(); refreshUsage()
@@ -491,10 +502,20 @@ export default function App(): JSX.Element {
             {messages.length === 0 && !streaming && (
               <div className="mr-auto max-w-[80%] rounded-2xl rounded-bl-md bg-ink-850 px-4 py-3 text-sm text-gray-200"><p className="msg-body">{greeting}</p></div>
             )}
-            {messages.map((m, i) => <Bubble key={i} role={m.role} text={m.content} />)}
-            {toolLog.map((t, i) => (
-              <div key={`tool-${i}`} className="mr-auto flex max-w-[80%] items-center gap-1.5 rounded-lg bg-ink-900 px-2.5 py-1 text-[11px] text-gray-500"><Wrench size={11} /> {t}</div>
+            {messages.map((m, i) => (
+              <Bubble key={i} role={m.role} text={m.content} tools={m.tools} trainable={trainablePaths} onOpenFile={openTrainFile} />
             ))}
+            {toolLog.map((t, i) => {
+              const clickable = t.file && trainablePaths.has(t.file)
+              return (
+                <div key={`tool-${i}`} className="mr-auto flex max-w-[80%] items-center gap-1.5 rounded-lg bg-ink-900 px-2.5 py-1 text-[11px] text-gray-500">
+                  <Wrench size={11} />
+                  {clickable
+                    ? <button onClick={() => openTrainFile(t.file!)} className="underline-offset-2 hover:text-accent hover:underline">{t.summary}</button>
+                    : <span>{t.summary}</span>}
+                </div>
+              )
+            })}
             {streaming && <Bubble role="assistant" text={streaming} streaming />}
             {status === 'working' && !streaming && (
               <div className="mr-auto flex items-center gap-2 rounded-2xl rounded-bl-md bg-ink-850 px-4 py-2.5 text-sm text-gray-400"><Loader2 size={14} className="animate-spin" /> {statusMsg}</div>
@@ -649,11 +670,35 @@ export default function App(): JSX.Element {
   )
 }
 
-function Bubble({ role, text, streaming }: { role: 'user' | 'assistant'; text: string; streaming?: boolean }): JSX.Element {
+function Bubble({ role, text, streaming, tools, trainable, onOpenFile }: {
+  role: 'user' | 'assistant'
+  text: string
+  streaming?: boolean
+  tools?: ToolRef[]
+  trainable?: Set<string>
+  onOpenFile?: (path: string) => void
+}): JSX.Element {
   const isUser = role === 'user'
   return (
     <div className={isUser ? 'ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-sm text-accent-fg' : 'mr-auto max-w-[80%] rounded-2xl rounded-bl-md bg-ink-850 px-4 py-2.5 text-sm text-gray-100'}>
       <p className="msg-body">{text}{streaming && <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-gray-400 align-middle" />}</p>
+      {!isUser && tools && tools.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 border-t border-ink-700/60 pt-1.5 text-[11px] text-gray-500">
+          <Wrench size={11} className="shrink-0" />
+          <span className="shrink-0">Referenced:</span>
+          {tools.map((t, i) => {
+            const clickable = !!(t.file && trainable?.has(t.file) && onOpenFile)
+            return (
+              <span key={i} className="flex items-center">
+                {clickable
+                  ? <button onClick={() => onOpenFile!(t.file!)} title="Open in the workspace editor" className="underline-offset-2 hover:text-accent hover:underline">{t.summary}</button>
+                  : <span>{t.summary}</span>}
+                {i < tools.length - 1 && <span className="mx-1 text-gray-700">·</span>}
+              </span>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

@@ -12,7 +12,7 @@ import { chat as codexChat } from './codex-bridge'
 import { getSetupStatus } from './setup'
 import { openTerminal, runSetupStep, SETUP_STEPS, type SetupStep } from './setup-run'
 import { syncWorkspace } from './git-sync'
-import { appendMessage, deleteSession, listSessions, loadSession, setAssistantText } from './sessions'
+import { appendMessage, deleteSession, listSessions, loadSession, setAssistantText, setAssistantTools } from './sessions'
 import { getProvider, getWorkspaceDir, readAgentFile, readConfig, writeAgentFile, writeConfig } from './workspace'
 import { appRootDir, openPath } from './runtime'
 import { getUsage } from './usage'
@@ -26,7 +26,8 @@ import {
   type AppConfig,
   type ChatStreamEvent,
   type Provider,
-  type ThinkingEffort
+  type ThinkingEffort,
+  type ToolRef
 } from '../shared/types'
 
 /** Start a Server-Sent Events response that survives buffering proxies. Some corporate security /
@@ -189,6 +190,7 @@ export async function startServer(): Promise<number> {
     let userMsgPersisted = false
     let finished = false
     let acc = ''
+    const tools: ToolRef[] = []
     const send = (e: ChatStreamEvent): void => {
       try {
         res.write(`data: ${JSON.stringify(e)}\n\n`)
@@ -224,8 +226,13 @@ export async function startServer(): Promise<number> {
         } else if (e.type === 'delta') {
           acc += e.text
           if (conversationId) setAssistantText(conversationId, acc)
+        } else if (e.type === 'tool') {
+          tools.push({ name: e.name, summary: e.summary, file: e.file })
         } else if (e.type === 'done') {
-          if (conversationId) setAssistantText(conversationId, acc || '(no response)')
+          if (conversationId) {
+            setAssistantText(conversationId, acc || '(no response)')
+            setAssistantTools(conversationId, tools)
+          }
         }
         send(e)
         if (e.type === 'done' || e.type === 'error') {

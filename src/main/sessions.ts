@@ -3,7 +3,7 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
-import type { ChatMessage, Provider, SessionDetail, SessionMeta } from '../shared/types'
+import type { ChatMessage, Provider, SessionDetail, SessionMeta, ToolRef } from '../shared/types'
 import { userDataDir } from './runtime'
 
 const dir = join(userDataDir(), 'sessions')
@@ -46,6 +46,21 @@ export function appendMessage(id: string, msg: ChatMessage, provider?: Provider)
   s.title = titleFromMessages(s.messages)
   saveSession(s)
   return s
+}
+
+/** Attach the list of tools the agent used to the last assistant message — called once on `done`
+ *  so the saved transcript shows which knowledge files were referenced. Safe if no assistant message
+ *  exists yet (no-op). */
+export function setAssistantTools(id: string, tools: ToolRef[]): void {
+  if (!tools.length) return
+  const s = loadSession(id)
+  if (!s) return
+  const last = s.messages[s.messages.length - 1]
+  if (last && last.role === 'assistant') {
+    last.tools = tools
+    s.updatedAt = Date.now()
+    saveSession(s)
+  }
 }
 
 /** Replace (or append to) the last assistant message — used while streaming a reply in. */
