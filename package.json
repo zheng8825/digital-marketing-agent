@@ -8,6 +8,7 @@
   "main": "out/main/index.cjs",
   "scripts": {
     "icon": "node build/make-icon.mjs",
+    "stop-icon": "node build/make-stop-icon.mjs",
     "fetch-node": "node build/fetch-node.mjs",
     "build:server": "node build/build-server.mjs",
     "build:web": "vite build",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@fontsource/dm-sans": "^5.1.0",
+    "@fontsource/inter": "^5.2.8",
     "@types/cross-spawn": "^6.0.6",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.0",

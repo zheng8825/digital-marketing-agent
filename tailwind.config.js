@@ -4,21 +4,23 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"DM Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif']
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif']
       },
       colors: {
-        // dark dashboard palette (matches the provided mockup)
+        // dark dashboard palette — "v2": deep slate + violet→cyan accents
         ink: {
-          950: '#0b0d14',
-          900: '#11131c',
-          850: '#161924',
-          800: '#1e2130',
-          700: '#2a2e3e'
+          950: '#1a1d24', // app background
+          900: '#222631', // sidebars / header bars
+          850: '#2a2f3a', // cards / chips
+          800: '#333a47', // hover
+          700: '#374151' // borders
         },
+        field: '#1e222b', // text inputs (a touch darker than cards)
         accent: {
-          DEFAULT: '#10b981', // emerald-ish — the agent's brand colour
+          DEFAULT: '#8b5cf6', // violet — primary brand accent
           fg: '#ffffff'
-        }
+        },
+        accent2: '#06b6d4' // cyan — secondary accent (gradient end / highlights)
       }
     }
   },

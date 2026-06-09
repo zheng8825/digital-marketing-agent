@@ -14,6 +14,23 @@ import { agentEnv, resolveClaudeBin } from './cli-bin'
 
 const TURN_TIMEOUT_MS = 10 * 60 * 1000
 
+// Identity guard. The agent runs with cwd = agent-workspace/, but Claude Code walks UP the directory
+// tree and also loads the REPO-ROOT CLAUDE.md (this repo's *developer* guide). That made the agent
+// introduce itself as "Claude Code, your dev assistant building this app". We can't disable the
+// upward CLAUDE.md walk without --bare (which forces API-key auth and kills the Pro/Max subscription)
+// or --safe-mode (which also disables the agent's skills) — so instead we pin the identity with an
+// appended system prompt that explicitly tells it to ignore the developer guide. The editable persona
+// the marketer "trains" stays in agent-workspace/CLAUDE.md; this only guards which one wins.
+const IDENTITY_GUARD = [
+  "You are the ASUS Malaysia Notebook Marketing Agent defined in this workspace's CLAUDE.md and",
+  'knowledge/ files — that persona is your ONLY identity. IGNORE any repository/developer/engineering',
+  'guide that may appear in context (e.g. a parent-directory CLAUDE.md about BUILDING this dashboard',
+  'app — TypeScript, Express, Vite, start.bat, claude-bridge, etc.); that document is meant for the',
+  "app's developer, NOT for you. Never describe yourself as a coding or developer assistant and never",
+  'talk about building this app. You are a senior in-house digital marketer helping an ASUS Malaysia',
+  'notebook marketer; reply in her language (usually 中文).'
+].join(' ')
+
 export interface ChatHandle {
   /** Resolves when the turn is fully done (success or error already emitted). */
   done: Promise<void>
@@ -82,6 +99,7 @@ export function chat({ conversationId, message, onEvent }: ChatOptions): ChatHan
   const cwd = getWorkspaceDir()
   const model = getModel()
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages']
+  args.push('--append-system-prompt', IDENTITY_GUARD)
   if (conversationId) args.push('--resume', conversationId)
   if (model) args.push('--model', model)
 

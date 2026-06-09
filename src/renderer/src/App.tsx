@@ -352,13 +352,8 @@ export default function App(): JSX.Element {
   return (
     <div className="flex h-screen w-screen flex-col bg-ink-950 text-gray-100">
       {/* Header */}
-      <header className="flex items-center justify-between gap-3 border-b border-ink-700 bg-ink-900 px-4 py-2">
+      <header className="flex h-[60px] shrink-0 items-center justify-between gap-3 border-b border-ink-700 bg-ink-900 px-5">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-accent/15 text-accent"><Bot size={16} /></div>
-          <div className="min-w-0">
-            <h1 className="truncate text-sm font-bold leading-tight">Marketing Agent</h1>
-            <p className="truncate text-[11px] leading-tight text-gray-500">ASUS Malaysia · notebooks</p>
-          </div>
           {(() => {
             const ac = authChip(setup)
             if (!ac) return null
@@ -368,7 +363,7 @@ export default function App(): JSX.Element {
               : 'border-ink-700 bg-ink-850 text-gray-400'
             return (
               <button onClick={() => setShowSettings(true)} title={ac.title}
-                className={`ml-1 hidden max-w-[15rem] items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] lg:flex ${tone}`}>
+                className={`hidden max-w-[16rem] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] lg:flex ${tone}`}>
                 {ac.tone === 'warn' ? <ShieldAlert size={12} className="shrink-0" /> : <User size={12} className="shrink-0" />}
                 <span className="truncate">{ac.label}</span>
               </button>
@@ -425,18 +420,15 @@ export default function App(): JSX.Element {
           <span className={`inline-block h-2 w-2 rounded-full ${dot}`} />
 
           <button onClick={doSync} disabled={syncing} title="Commit & push your training/output changes to GitHub"
-            className="flex items-center gap-1.5 rounded-md border border-ink-700 bg-ink-850 px-2 py-1 text-xs text-gray-300 hover:bg-ink-800 disabled:opacity-50">
+            className="flex items-center gap-1.5 rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-xs text-gray-300 hover:bg-ink-800 disabled:opacity-50">
             {syncing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}<span className="hidden sm:inline">Sync</span>
-          </button>
-          <button onClick={() => setShowSettings(true)} title="Settings" className="rounded-md border border-ink-700 bg-ink-850 p-1.5 text-gray-300 hover:bg-ink-800">
-            <Settings size={14} />
           </button>
         </div>
       </header>
 
       {/* Usage detail popover */}
       {showUsage && usage && (
-        <div className="absolute right-4 top-12 z-30 w-72 rounded-xl border border-ink-700 bg-ink-850 p-3 text-xs shadow-2xl">
+        <div className="absolute right-4 top-16 z-30 w-72 rounded-xl border border-ink-700 bg-ink-850 p-3 text-xs shadow-2xl">
           <div className="mb-2 flex items-center justify-between">
             <span className="font-semibold text-gray-200">Usage</span>
             <button onClick={() => setShowUsage(false)} className="text-gray-500 hover:text-gray-300"><X size={13} /></button>
@@ -474,25 +466,53 @@ export default function App(): JSX.Element {
       )}
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left: chats */}
-        <aside className="hidden w-60 shrink-0 flex-col border-r border-ink-700 bg-ink-900 md:flex">
-          <div className="flex items-center justify-between border-b border-ink-700 px-4 py-3">
-            <h2 className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Chats</h2>
-            <button onClick={newChat} title="New chat" className="text-gray-400 hover:text-white"><Plus size={16} /></button>
+        {/* Left: workspace + chats */}
+        <aside className="hidden w-64 shrink-0 flex-col border-r border-ink-700 bg-ink-900 md:flex">
+          {/* Workspace selector → opens the agent's workspace folder */}
+          <button onClick={() => api.openWorkspace()} title="Open the agent's workspace folder"
+            className="flex items-center justify-between border-b border-ink-700 px-5 py-4 text-left transition-colors hover:bg-ink-800">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-black text-[10px] font-bold tracking-wide text-white">ASUS</div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-gray-100">ASUS Malaysia</p>
+                <p className="truncate text-[11px] text-gray-500">notebooks</p>
+              </div>
+            </div>
+            <FolderOpen size={15} className="shrink-0 text-gray-500" />
+          </button>
+
+          <div className="flex items-center justify-between px-5 pb-2 pt-4">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Recent Chats</span>
+            <button onClick={newChat} title="New chat" className="text-gray-400 transition-colors hover:text-white"><Plus size={16} /></button>
           </div>
-          <div className="scroll-thin flex-1 space-y-0.5 overflow-y-auto p-2">
-            <button onClick={newChat} className={`group flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm ${activeId === null ? 'bg-ink-800 text-gray-100' : 'text-gray-300 hover:bg-ink-850'}`}>
+          <div className="scroll-thin flex-1 space-y-2 overflow-y-auto px-3 pb-3">
+            <button onClick={newChat} className={`group flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${activeId === null ? 'border-ink-700 bg-ink-850 text-gray-100' : 'border-transparent text-gray-400 hover:bg-ink-800 hover:text-gray-200'}`}>
               <Plus size={14} className="shrink-0 text-gray-500" /> New chat
             </button>
-            {sessions.map((s) => (
-              <div key={s.id} onClick={() => openSession(s.id)} className={`group flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 ${activeId === s.id ? 'bg-ink-800' : 'hover:bg-ink-850'}`}>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-gray-200">{s.title}</p>
-                  <p className="text-[11px] text-gray-500">{relTime(s.updatedAt)}</p>
+            {sessions.map((s) => {
+              const active = activeId === s.id
+              return (
+                <div key={s.id} onClick={() => openSession(s.id)}
+                  className={`group relative flex cursor-pointer items-center gap-2 overflow-hidden rounded-xl border px-3 py-2.5 pl-4 transition-colors ${active ? 'border-ink-700 bg-ink-850' : 'border-transparent hover:bg-ink-800'}`}>
+                  {active && <span className="absolute inset-y-0 left-0 w-1 rounded-l-xl bg-accent2" />}
+                  <div className="min-w-0 flex-1">
+                    <p className={`truncate text-sm font-medium ${active ? 'text-gray-100' : 'text-gray-300'}`}>{s.title}</p>
+                    <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-gray-500">
+                      <Bot size={11} className="shrink-0 text-accent2" />
+                      <span className="truncate">{relTime(s.updatedAt)}</span>
+                    </div>
+                  </div>
+                  <button onClick={(e) => removeSession(s.id, e)} title="Delete" className="hidden shrink-0 text-gray-500 hover:text-rose-400 group-hover:block"><Trash2 size={13} /></button>
                 </div>
-                <button onClick={(e) => removeSession(s.id, e)} title="Delete" className="hidden text-gray-500 hover:text-rose-400 group-hover:block"><Trash2 size={13} /></button>
-              </div>
-            ))}
+              )
+            })}
+          </div>
+
+          <div className="border-t border-ink-700 p-3">
+            <button onClick={() => setShowSettings(true)}
+              className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-sm font-medium text-gray-400 transition-colors hover:bg-ink-800 hover:text-gray-100">
+              <Settings size={17} /> Settings
+            </button>
           </div>
         </aside>
 
@@ -500,7 +520,12 @@ export default function App(): JSX.Element {
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="scroll-thin flex-1 space-y-3 overflow-y-auto p-5" onClick={() => { showUsage && setShowUsage(false) }}>
             {messages.length === 0 && !streaming && (
-              <div className="mr-auto max-w-[80%] rounded-2xl rounded-bl-md bg-ink-850 px-4 py-3 text-sm text-gray-200"><p className="msg-body">{greeting}</p></div>
+              <div className="flex h-full flex-col items-center justify-center px-4">
+                <div className="gradient-bg w-full max-w-[600px] rounded-2xl p-8 text-white shadow-lg shadow-accent/20">
+                  <h1 className="mb-3 text-3xl font-bold leading-tight">Hello, ASUS Malaysia! 👋</h1>
+                  <p className="msg-body text-base leading-relaxed opacity-90">{greeting}</p>
+                </div>
+              </div>
             )}
             {messages.map((m, i) => (
               <Bubble key={i} role={m.role} text={m.content} tools={m.tools} trainable={trainablePaths} onOpenFile={openTrainFile} />
@@ -524,16 +549,23 @@ export default function App(): JSX.Element {
           </div>
 
           <div className="border-t border-ink-700 bg-ink-900 px-4 pb-3 pt-2.5">
-            <div className="mb-2 flex flex-wrap items-center gap-1.5">
-              {QUICK_ACTIONS.map((q) => (
-                <button key={q.cmd} onClick={() => quick(q.cmd)} title={`${q.cmd} — ${q.hint}`} className="rounded-full border border-ink-700 bg-ink-850 px-3 py-1 text-xs text-gray-300 hover:border-accent/50 hover:text-white">{q.label}</button>
-              ))}
+            <div className="mb-2.5 flex flex-wrap items-center gap-2">
+              {QUICK_ACTIONS.map((q) => {
+                const glow =
+                  q.cmd === '/post' ? 'border-accent/50 shadow-[0_0_12px_rgba(139,92,246,0.18)] hover:shadow-[0_0_16px_rgba(139,92,246,0.32)]'
+                  : q.cmd === '/kol' ? 'border-accent2/50 shadow-[0_0_12px_rgba(6,182,212,0.18)] hover:shadow-[0_0_16px_rgba(6,182,212,0.32)]'
+                  : 'border-ink-700 hover:border-accent/50'
+                return (
+                  <button key={q.cmd} onClick={() => quick(q.cmd)} title={`${q.cmd} — ${q.hint}`}
+                    className={`rounded-full border bg-ink-850/60 px-4 py-1.5 text-xs text-gray-300 transition-all hover:bg-ink-850 hover:text-white ${glow}`}>{q.label}</button>
+                )
+              })}
               <button onClick={() => { setRightTab('docs'); fileInputRef.current?.click() }} title="Upload a PPT / Word / PDF for the agent to read & answer about"
-                className="ml-auto flex items-center gap-1.5 rounded-full border border-ink-700 bg-ink-850 px-3 py-1 text-xs text-gray-400 hover:border-accent/50 hover:text-white">
+                className="ml-auto flex items-center gap-1.5 rounded-full border border-ink-700 bg-ink-850/60 px-4 py-1.5 text-xs text-gray-400 transition-all hover:border-accent/50 hover:text-white">
                 <Upload size={12} /> Docs{docs.length ? ` (${docs.length})` : ''}
               </button>
               <button onClick={openTerminal} title="Open a terminal in the agent's workspace folder — to run `claude`, `claude auth status`, git, etc."
-                className="flex items-center gap-1.5 rounded-full border border-ink-700 bg-ink-850 px-3 py-1 text-xs text-gray-400 hover:border-accent/50 hover:text-white">
+                className="flex items-center gap-1.5 rounded-full border border-ink-700 bg-ink-850/60 px-4 py-1.5 text-xs text-gray-400 transition-all hover:border-accent/50 hover:text-white">
                 <Terminal size={12} /> Terminal
               </button>
             </div>
@@ -544,15 +576,16 @@ export default function App(): JSX.Element {
                 <button onClick={() => setSrcSel(new Set())} className="shrink-0 underline hover:text-gray-200">clear</button>
               </div>
             )}
-            <form onSubmit={(e) => { e.preventDefault(); send() }} className="flex items-end gap-2">
+            <form onSubmit={(e) => { e.preventDefault(); send() }}
+              className="flex items-end gap-2 rounded-xl border border-ink-700 bg-field p-2 shadow-inner transition-colors focus-within:border-accent/70">
               <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
                 rows={2} placeholder="Ask the agent…  (Enter to send, Shift+Enter for a new line)"
-                className="scroll-thin flex-1 resize-none rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-600 focus:border-accent/60 focus:outline-none" />
+                className="scroll-thin flex-1 resize-none border-none bg-transparent px-2 py-1.5 text-sm text-gray-100 placeholder:text-gray-600 focus:outline-none focus:ring-0" />
               {status === 'working' ? (
-                <button type="button" onClick={stop} className="grid h-9 w-9 place-items-center rounded-lg bg-rose-600/80 text-white hover:bg-rose-600" title="Stop"><StopCircle size={16} /></button>
+                <button type="button" onClick={stop} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-rose-600/80 text-white transition hover:bg-rose-600" title="Stop"><StopCircle size={16} /></button>
               ) : (
-                <button type="submit" disabled={!input.trim()} className="grid h-9 w-9 place-items-center rounded-lg bg-accent text-accent-fg hover:brightness-110 disabled:opacity-40" title="Send"><Send size={16} /></button>
+                <button type="submit" disabled={!input.trim()} className="gradient-bg grid h-9 w-9 shrink-0 place-items-center rounded-lg text-white transition hover:brightness-110 disabled:opacity-40 disabled:saturate-50" title="Send"><Send size={16} /></button>
               )}
             </form>
           </div>
@@ -560,13 +593,17 @@ export default function App(): JSX.Element {
 
         {/* Right: workspace — notes / docs / training */}
         <aside className="hidden w-80 shrink-0 flex-col border-l border-ink-700 bg-ink-900 lg:flex">
-          <div className="flex border-b border-ink-700 text-xs">
-            {(['notes', 'docs', 'train'] as const).map((t) => (
-              <button key={t} onClick={() => setRightTab(t)} className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 font-semibold uppercase tracking-wider ${rightTab === t ? 'bg-ink-850 text-gray-100' : 'text-gray-500 hover:text-gray-300'}`}>
-                {t === 'notes' ? <BookOpen size={13} /> : t === 'docs' ? <Files size={13} /> : <Bot size={13} />}
-                {t === 'notes' ? 'Notes' : t === 'docs' ? `Docs${docs.length ? ` (${docs.length})` : ''}` : 'Train'}
-              </button>
-            ))}
+          <div className="border-b border-ink-700 px-5 pt-5">
+            <h2 className="mb-3 text-base font-semibold text-gray-100">Project Knowledge</h2>
+            <div className="flex items-center gap-5 text-sm font-medium">
+              {(['notes', 'docs', 'train'] as const).map((t) => (
+                <button key={t} onClick={() => setRightTab(t)}
+                  className={`-mb-px flex items-center gap-1.5 border-b-2 pb-2.5 transition-colors ${rightTab === t ? 'border-accent text-accent' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
+                  {t === 'notes' ? <BookOpen size={14} /> : t === 'docs' ? <Files size={14} /> : <Bot size={14} />}
+                  {t === 'notes' ? 'Notes' : t === 'docs' ? `Docs${docs.length ? ` (${docs.length})` : ''}` : 'Train'}
+                </button>
+              ))}
+            </div>
           </div>
 
           {rightTab === 'notes' && (
