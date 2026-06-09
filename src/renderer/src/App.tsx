@@ -9,6 +9,10 @@ import {
   Files,
   FolderOpen,
   Loader2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   Presentation,
   RefreshCw,
@@ -122,6 +126,14 @@ export default function App(): JSX.Element {
   const [toolLog, setToolLog] = useState<ToolRef[]>([])
 
   const [rightTab, setRightTab] = useState<'notes' | 'docs' | 'train'>('notes')
+  // Collapsible side panels + a draggable divider between the chat and the right panel.
+  const [leftOpen, setLeftOpen] = useState(() => localStorage.getItem('ma:leftOpen') !== '0')
+  const [rightOpen, setRightOpen] = useState(() => localStorage.getItem('ma:rightOpen') !== '0')
+  const [rightWidth, setRightWidth] = useState(() => {
+    const v = Number(localStorage.getItem('ma:rightWidth'))
+    return v >= 280 && v <= 1600 ? v : 340
+  })
+  const resizingRef = useRef(false)
   const [notes, setNotes] = useState(() => localStorage.getItem('ma:notes') ?? '')
   const [trainFiles, setTrainFiles] = useState<AgentFileRef[]>([])
   const [trainPath, setTrainPath] = useState('CLAUDE.md')
@@ -175,6 +187,33 @@ export default function App(): JSX.Element {
   }, [refreshSessions, refreshUsage, refreshDocs])
 
   useEffect(() => { localStorage.setItem('ma:notes', notes) }, [notes])
+  useEffect(() => { localStorage.setItem('ma:leftOpen', leftOpen ? '1' : '0') }, [leftOpen])
+  useEffect(() => { localStorage.setItem('ma:rightOpen', rightOpen ? '1' : '0') }, [rightOpen])
+  useEffect(() => { localStorage.setItem('ma:rightWidth', String(rightWidth)) }, [rightWidth])
+  // Drag-to-resize the right panel: width = distance from the cursor to the right window edge.
+  useEffect(() => {
+    const onMove = (e: MouseEvent): void => {
+      if (!resizingRef.current) return
+      // Upper bound is dynamic: drag as wide as you like, but always leave ≥360px for the chat.
+      const max = Math.max(360, window.innerWidth - 360)
+      setRightWidth(Math.min(max, Math.max(280, window.innerWidth - e.clientX)))
+    }
+    const onUp = (): void => {
+      if (!resizingRef.current) return
+      resizingRef.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [])
+  const startResize = (e: React.MouseEvent): void => {
+    e.preventDefault()
+    resizingRef.current = true
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, streaming, toolLog])
 
   const loadTrainFile = useCallback((path: string) => {
@@ -466,8 +505,9 @@ export default function App(): JSX.Element {
       )}
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left: workspace + chats */}
-        <aside className="hidden w-64 shrink-0 flex-col border-r border-ink-700 bg-ink-900 md:flex">
+        {/* Left: workspace + chats (collapsible) */}
+        {leftOpen ? (
+        <aside className="flex w-64 shrink-0 flex-col border-r border-ink-700 bg-ink-900">
           {/* Workspace selector → opens the agent's workspace folder */}
           <button onClick={() => api.openWorkspace()} title="Open the agent's workspace folder"
             className="flex items-center justify-between border-b border-ink-700 px-5 py-4 text-left transition-colors hover:bg-ink-800">
@@ -483,7 +523,10 @@ export default function App(): JSX.Element {
 
           <div className="flex items-center justify-between px-5 pb-2 pt-4">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Recent Chats</span>
-            <button onClick={newChat} title="New chat" className="text-gray-400 transition-colors hover:text-white"><Plus size={16} /></button>
+            <div className="flex items-center gap-1.5 text-gray-400">
+              <button onClick={newChat} title="New chat" className="transition-colors hover:text-white"><Plus size={16} /></button>
+              <button onClick={() => setLeftOpen(false)} title="Collapse panel" className="transition-colors hover:text-white"><PanelLeftClose size={15} /></button>
+            </div>
           </div>
           <div className="scroll-thin flex-1 space-y-2 overflow-y-auto px-3 pb-3">
             <button onClick={newChat} className={`group flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${activeId === null ? 'border-ink-700 bg-ink-850 text-gray-100' : 'border-transparent text-gray-400 hover:bg-ink-800 hover:text-gray-200'}`}>
@@ -515,6 +558,15 @@ export default function App(): JSX.Element {
             </button>
           </div>
         </aside>
+        ) : (
+        <aside className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-ink-700 bg-ink-900 py-3">
+          <button onClick={() => setLeftOpen(true)} title="Expand chats" className="grid h-9 w-9 place-items-center rounded-lg text-gray-300 hover:bg-ink-800 hover:text-white"><PanelLeftOpen size={18} /></button>
+          <button onClick={newChat} title="New chat" className="grid h-9 w-9 place-items-center rounded-lg text-gray-400 hover:bg-ink-800 hover:text-white"><Plus size={18} /></button>
+          <div className="flex-1" />
+          <button onClick={() => api.openWorkspace()} title="Open the agent's workspace folder" className="grid h-9 w-9 place-items-center rounded-lg text-gray-400 hover:bg-ink-800 hover:text-white"><FolderOpen size={17} /></button>
+          <button onClick={() => setShowSettings(true)} title="Settings" className="grid h-9 w-9 place-items-center rounded-lg text-gray-400 hover:bg-ink-800 hover:text-white"><Settings size={17} /></button>
+        </aside>
+        )}
 
         {/* Center: chat */}
         <main className="flex min-w-0 flex-1 flex-col">
@@ -591,10 +643,20 @@ export default function App(): JSX.Element {
           </div>
         </main>
 
-        {/* Right: workspace — notes / docs / training */}
-        <aside className="hidden w-80 shrink-0 flex-col border-l border-ink-700 bg-ink-900 lg:flex">
+        {/* Resizable divider between the chat and the right panel */}
+        {rightOpen && (
+          <div onMouseDown={startResize} title="Drag to resize"
+            className="w-1.5 shrink-0 cursor-col-resize bg-ink-700/40 transition-colors hover:bg-accent/50" />
+        )}
+
+        {/* Right: workspace — notes / docs / training (collapsible + resizable) */}
+        {rightOpen ? (
+        <aside style={{ width: rightWidth }} className="flex shrink-0 flex-col border-l border-ink-700 bg-ink-900">
           <div className="border-b border-ink-700 px-5 pt-5">
-            <h2 className="mb-3 text-base font-semibold text-gray-100">Project Knowledge</h2>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-100">Project Knowledge</h2>
+              <button onClick={() => setRightOpen(false)} title="Collapse panel" className="text-gray-400 transition-colors hover:text-white"><PanelRightClose size={16} /></button>
+            </div>
             <div className="flex items-center gap-5 text-sm font-medium">
               {(['notes', 'docs', 'train'] as const).map((t) => (
                 <button key={t} onClick={() => setRightTab(t)}
@@ -681,6 +743,18 @@ export default function App(): JSX.Element {
 
           {syncNote && <div className="border-t border-ink-700 px-3 py-2 text-[11px] text-gray-400"><span className="msg-body">{syncNote}</span></div>}
         </aside>
+        ) : (
+        <aside className="flex w-12 shrink-0 flex-col items-center gap-1 border-l border-ink-700 bg-ink-900 py-3">
+          <button onClick={() => setRightOpen(true)} title="Expand panel" className="grid h-9 w-9 place-items-center rounded-lg text-gray-300 hover:bg-ink-800 hover:text-white"><PanelRightOpen size={18} /></button>
+          {(['notes', 'docs', 'train'] as const).map((t) => (
+            <button key={t} onClick={() => { setRightTab(t); setRightOpen(true) }}
+              title={t === 'notes' ? 'Notes' : t === 'docs' ? 'Docs' : 'Train'}
+              className={`grid h-9 w-9 place-items-center rounded-lg transition-colors ${rightTab === t ? 'bg-ink-850 text-accent' : 'text-gray-400 hover:bg-ink-800 hover:text-white'}`}>
+              {t === 'notes' ? <BookOpen size={17} /> : t === 'docs' ? <Files size={17} /> : <Bot size={17} />}
+            </button>
+          ))}
+        </aside>
+        )}
       </div>
 
       {/* Settings modal */}
